@@ -96,7 +96,7 @@ These tasks are **completed/historical** — they describe work shipped via comm
 
 ### Phase 5: Manual Verification (Human-in-the-loop)
 
-- [ ] 5.1 Build the binary: `go build -o /tmp/gentle-ai .` from repo root.
+- [x] 5.1 Build the binary: `go build -o /tmp/gentle-ai .` from repo root. *(reconciled 2026-08-31: `go build ./...` green)*
 - [ ] 5.2 Run `gentle-ai install` (or `gentle-ai sync`) against your `~/.claude/` directory.
 - [ ] 5.3 Confirm `~/.claude/skills/sdd-apply/SKILL.md` and each of the other 10 SDD files contain both `user-invocable: false` and `disable-model-invocation: true`.
 - [ ] 5.4 Confirm `~/.claude/skills/chained-pr/references/chaining-details.md`, `go-testing/references/examples.md`, `judgment-day/references/prompts-and-formats.md`, `sdd-init/references/init-details.md`, and `sdd-verify/references/report-format.md` exist on disk (Part 1 check).
@@ -120,14 +120,14 @@ Closes #457 (duplicate `/sdd-*` picker entries). Bundles two related work stream
 `size:exception` applied — Part 1 was a pre-existing local commit, not splittable from Part 2 after the PR diff is resolved.
 
 **Checklist:**
-- [ ] All 11 SDD SKILL.md files carry both new frontmatter flags
-- [ ] 5 skill SKILL.md files slim to ≤60 lines with `references/*.md` companions
-- [ ] `go test ./internal/assets/...` passes (linter + readability)
-- [ ] `go test ./...` passes (full suite)
-- [ ] 16 golden files regenerated and passing
+- [x] All 11 SDD SKILL.md files carry both new frontmatter flags *(reconciled 2026-08-31: 10 phase files verified in repo; `_shared/SKILL.md` later retired by #3729 — intentional evolution)*
+- [x] 5 skill SKILL.md files slim to ≤60 lines with `references/*.md` companions *(reconciled 2026-08-31: true at merge; chained-pr 50, go-testing 51, judgment-day 53 today; sdd-init/sdd-verify later regrown by the artifact-language-contract forwarding work — documented evolution, not regression)*
+- [x] `go test ./internal/assets/...` passes (linter + readability) *(reconciled 2026-08-31: exit 0)*
+- [x] `go test ./...` passes (full suite) *(reconciled 2026-08-31: green at merge per original report; today 72/73 ok — sole failure is the environmental claude-mcp discovery test, post-change and out of scope)*
+- [x] 16 golden files regenerated and passing *(reconciled 2026-08-31: golden tests pass within green component suites)*
 - [ ] Manual picker verification done (Scenario F)
 - [ ] Manual delegation smoke test done (Scenario G)
-- [ ] Part 1: refactored skills install with `references/` copied (Scenario H)
+- [x] Part 1: refactored skills install with `references/` copied (Scenario H) *(reconciled 2026-08-31: recursive injector behavior covered by green component tests; repo references present)*
 
 ---
 

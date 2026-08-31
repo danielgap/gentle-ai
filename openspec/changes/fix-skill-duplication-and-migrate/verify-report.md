@@ -1,3 +1,19 @@
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:b4010a68810450e9ba219f2bb61ac88aaf22ce3056877a9f2e421084b8e756c6
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 0/0
+scenarios: 0/0
+test_command: go test -count=1 ./internal/assets/... ./internal/components/skills/...
+test_exit_code: 0
+test_output_hash: sha256:9ede9fb8970246728023edc64901d0b225b4ada21b65ffbb9acaeef386c235de
+build_command: go vet ./...
+build_exit_code: 0
+build_output_hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
 # Verify Report: fix-skill-duplication-and-migrate
 
 > **Bundle Notice — PR #458 ships two independent work streams:**
@@ -272,3 +288,19 @@ Reviewer must run these against a real Claude Code v2.1.131+ environment after t
 ## Next Recommended
 
 `sdd-archive` — once the PR is merged and manual scenarios F, G, and Part 1 on-disk checks are verified, archive this change.
+
+
+---
+
+# Re-verification 2026-08-31 (native envelope)
+
+## Fresh evidence
+
+- `go test -count=1 ./internal/assets/... ./internal/components/skills/...` → exit 0, all packages ok (output hash sha256:9ede9fb8970246728023edc64901d0b225b4ada21b65ffbb9acaeef386c235de).
+- `go vet ./...` → exit 0 (empty output).
+- Implementation spot-check: the frontmatter flags `user-invocable: false` and `disable-model-invocation: true` are present in all 10 remaining SDD phase SKILL.md files (sdd-apply through sdd-verify).
+- `_shared/SKILL.md` (the 11th file at verify time) was later retired by commit 82170b28 (PR #3729, "stop publishing shared marker") — intentional post-change evolution, not a defect of this change. `_shared/` now ships convention documents without a SKILL.md.
+
+## Verdict
+
+`pass_with_warnings` — warnings: behavioral scenarios F and G remain manual (Claude Code picker behavior is not automatically testable); the free-form spec format carries no openspec-standard requirement/scenario markers, so envelope counts are 0/0 and 0/0.
