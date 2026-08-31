@@ -4,13 +4,37 @@
 
 ### Requirement: Self-Derived Recovery Authorization
 
-Every authorization-gated review command MUST be able to emit its own required `--maintainer-authorization` binding value, generalizing the existing `--prepare`/`--preflight` pattern to all ten gated commands. For deterministic recovery shapes already proven legal, the facade's routing layer MUST auto-derive and apply that binding without operator input, stamping `actor` from the repository Git identity and a machine-generated reason into the same CAS audit entry shape used today.
+Authorization-gated review commands MUST follow the intent-classified emitter posture instead of a blanket self-emission rule. A gated verb MAY offer an emitter (`--prepare`/`--preflight`) exactly when minting the binding would NOT bypass a human-attestation gate; where the binding is the sole carrier of a human's claim to have read a specific persisted state, the verb MUST NOT self-emit it. For deterministic recovery shapes already proven legal, the facade's routing layer MUST auto-derive and apply that binding without operator input, stamping `actor` from the repository Git identity and a machine-generated reason into the same CAS audit entry shape used today.
 
-#### Scenario: Gated command self-emits its binding
+*Re-scoped 2026-08-31: the original wording demanded self-emission from a fixed set of ten gated commands. That set no longer matches the verb landscape, and at least one listed verb (`review abandon`) carries a ratified design decision that it must never self-emit — its binding is the sole carrier of the attestation "I read this specific lineage's frozen state" (`internal/cli/review_abandon.go`). The blanket rule would have required defeating that gate.*
 
-- GIVEN any of the ten `--maintainer-authorization`-gated commands
-- WHEN the operator requests the binding via its emitter flag
-- THEN the command prints the exact deterministic binding value the facade will accept
+#### Scenario: Attestation-carrier verbs never self-emit
+
+- GIVEN a gated verb whose authorization binding is the sole carrier of a human's claim to have read a specific persisted authority state (today: `review abandon`)
+- WHEN the verb's flags and help are inspected
+- THEN it MUST NOT offer a mode that mints or prints its own binding value
+- AND its no-flags guidance MUST direct the operator to read the persisted authority inventory for the values
+
+#### Scenario: Operator-value verbs may self-emit for formatting only
+
+- GIVEN a gated verb whose binding fields are values the operator already supplied as flags or the provider derives as bounded inputs (today: `review reopen-results --prepare`)
+- WHEN the operator requests the prepared form
+- THEN the verb MAY print the derived plan and binding, sparing the operator string formatting
+- AND the emission MUST NOT introduce authority facts the operator did not already hold
+
+#### Scenario: Provider-input emitters never print the binding
+
+- GIVEN a verb whose preflight emits bounded provider inputs for a human to compose a binding (today: `review repair --preflight`)
+- WHEN its preflight output is inspected
+- THEN it MUST contain provider-owned inputs only
+- AND it MUST NOT contain the authorization binding itself
+
+#### Scenario: New gated verbs declare their emitter class
+
+- GIVEN a new authorization-gated review verb is introduced
+- WHEN its operation contract row and help text are authored
+- THEN they MUST state its emitter class (attestation-carrier, operator-values, provider-inputs, or facade-auto-derived)
+- AND an attestation-carrier verb MUST document why self-emission would defeat its gate
 
 #### Scenario: Facade applies binding for a deterministic recovery shape
 
