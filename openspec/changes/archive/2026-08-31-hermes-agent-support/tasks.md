@@ -132,15 +132,15 @@ Tasks T-14 through T-16 are independent of each other (separate files).
 
 ### 6a. Permissions (simplest; good warm-up)
 
-- [ ] T-18 `internal/components/permissions/inject_test.go` — Add test case: `Inject(homeDir, hermesAdapter)`
+- [x] T-18 `internal/components/permissions/inject_test.go` — Add test case: `Inject(homeDir, hermesAdapter)`
   returns `nil` and writes no file (add case to existing test file)
 
-- [ ] T-19 `internal/components/permissions/inject.go` — Add `case model.AgentHermes: return nil`
+- [x] T-19 `internal/components/permissions/inject.go` — Add `case model.AgentHermes: return nil`
   to the permissions dispatch; Hermes format is undocumented — skip (modify)
 
 ### 6b. Engram Setup Slug
 
-- [ ] T-20 `internal/components/engram/setup_test.go` — Add table case:
+- [x] T-20 `internal/components/engram/setup_test.go` — Add table case:
   `{model.AgentHermes, "", false}` to `TestSetupAgentSlug` (add case to existing test)
 
 *(T-13 and T-20 both touch the engram/setup path; T-13 is the implementation change, T-20
@@ -149,7 +149,7 @@ T-13's `case model.AgentHermes` is applied.)*
 
 ### 6c. SDD Injection
 
-- [ ] T-21 `internal/components/sdd/inject_test.go` — Add tests (add to existing test file):
+- [x] T-21 `internal/components/sdd/inject_test.go` — Add tests (add to existing test file):
   - `TestSDDOrchestratorAssetSelection` extended with case `{agent: model.AgentHermes, want: "hermes/sdd-orchestrator.md"}`
   - `TestInjectHermesWritesSDDOrchestratorToSOULMD`: fresh `t.TempDir()` home dir; call
     `sdd.Inject(homeDir, hermesAdapter, "")` with `StrategyMergeIntoYAML` for MCP strategy
@@ -158,27 +158,27 @@ T-13's `case model.AgentHermes` is applied.)*
   - `TestInjectHermesStrategyMergeIntoYAML`: assert StrategyMergeIntoYAML dispatches correctly
     (no panic, returns InjectionResult with Changed=true on first run)
 
-- [ ] T-22 `internal/components/sdd/inject.go` — Add `case model.AgentHermes: return "hermes/sdd-orchestrator.md"`
+- [x] T-22 `internal/components/sdd/inject.go` — Add `case model.AgentHermes: return "hermes/sdd-orchestrator.md"`
   to `sddOrchestratorAsset()`; add `case model.StrategyMergeIntoYAML:` handling in sdd inject
   dispatch if needed (verify existing `StrategyMarkdownSections` path already covers SOUL.md
   injection via the adapter's `SystemPromptStrategy()`; add only what's missing) (modify)
 
 ### 6d. MCP Injection
 
-- [ ] T-23 `internal/components/mcp/inject_test.go` — Add tests (add to existing test file):
+- [x] T-23 `internal/components/mcp/inject_test.go` — Add tests (add to existing test file):
   - `TestInjectHermesContext7IntoYAML`: `t.TempDir()` fresh dir; call `mcp.Inject(homeDir, hermesAdapter)`;
     assert `~/.hermes/config.yaml` contains `context7:` entry under `mcp_servers:`
   - `TestInjectHermesContext7Idempotent`: call twice; assert exactly one `context7:` entry
   - `TestStrategyMergeIntoYAMLDispatches`: verifies no error and `Changed=true` on first run
 
-- [ ] T-24 `internal/components/mcp/inject.go` — Add `case model.StrategyMergeIntoYAML:` to
+- [x] T-24 `internal/components/mcp/inject.go` — Add `case model.StrategyMergeIntoYAML:` to
   the strategy switch; implement `injectYAMLFile(homeDir, adapter)` function (mirrors `injectTOMLFile`):
   read config via `osReadFile`; call `filemerge.UpsertHermesContext7Block(existing)`;
   write via `filemerge.WriteFileAtomic`; return `InjectionResult` (modify)
 
 ### 6e. Engram Injection
 
-- [ ] T-25 `internal/components/engram/inject_test.go` — Add tests (add to existing test file):
+- [x] T-25 `internal/components/engram/inject_test.go` — Add tests (add to existing test file):
   - `TestInjectEngramHermesYAMLOverlay`: `t.TempDir()`; call `engram.Inject(homeDir, hermesAdapter, opts)`;
     assert `~/.hermes/config.yaml` contains `engram:` under `mcp_servers:`, idempotent on re-run
   - `TestEngramYAMLCommandRecoveryCustomPath`: `t.TempDir()` with a `config.yaml` whose
@@ -191,16 +191,16 @@ T-13's `case model.AgentHermes` is applied.)*
   - `TestEngramYAMLCommandRecoveryListShape`: `config.yaml` with `command:` as YAML list;
     assert first element recovered
 
-- [ ] T-26 `internal/components/engram/inject.go` — Add `case model.StrategyMergeIntoYAML:`
+- [x] T-26 `internal/components/engram/inject.go` — Add `case model.StrategyMergeIntoYAML:`
   to the MCP-strategy switch inside `injectWithOptions` (step 1): read config via `readFileOrEmpty`;
   call `stableEngramCommandForMergedConfig`; call `filemerge.UpsertHermesEngramBlock(existing, engramCmd)`;
   write via `filemerge.WriteFileAtomic`; set `changed` and append to `files` (modify)
 
-- [ ] T-27 `internal/components/engram/inject.go` — Add `model.AgentHermes` to `isStandardAgent()`
+- [x] T-27 `internal/components/engram/inject.go` — Add `model.AgentHermes` to `isStandardAgent()`
   switch so Hermes gets the stable `engram` command when no prior command is recovered (modify;
   can be a single-line addition in same commit as T-26)
 
-- [ ] T-28 `internal/components/engram/inject.go` — Add YAML recovery early branch in
+- [x] T-28 `internal/components/engram/inject.go` — Add YAML recovery early branch in
   `existingMergedEngramCommand`: after `len(raw)==0` guard, before `MergeJSONObjects` call:
   `if agentID == model.AgentHermes { return filemerge.ReadYAMLMCPServerCommand(string(raw), "engram") }`
   (modify; same commit as T-26/T-27 acceptable since all three are in `inject.go`)
@@ -210,7 +210,7 @@ should be applied together in one commit.*
 
 ### 6f. Persona Injection
 
-- [ ] T-29 `internal/components/persona/inject_test.go` — Add table-driven test cases
+- [x] T-29 `internal/components/persona/inject_test.go` — Add table-driven test cases
   (add to existing test file):
   - Hermes + `gentleman` → returns content from `hermes/persona-gentleman.md`; does NOT contain `<available_skills>`
   - Hermes + `gentleman-neutral-artifacts` → same as gentleman (same asset)
@@ -220,7 +220,7 @@ should be applied together in one commit.*
   - Hermes persona injected into SOUL.md → `<!-- gentle-ai:persona -->` markers present; engram
     and SDD sections coexist without duplication
 
-- [ ] T-30 `internal/components/persona/inject.go` — Refactor `personaContent()`:
+- [x] T-30 `internal/components/persona/inject.go` — Refactor `personaContent()`:
   - Change `PersonaNeutral` case from single `assets.MustRead("generic/persona-neutral.md")` to
     a per-agent inner switch: `case model.AgentHermes: return assets.MustRead("hermes/persona-neutral.md")`;
     `default: return assets.MustRead("generic/persona-neutral.md")`
@@ -235,24 +235,24 @@ should be applied together in one commit.*
 Tasks T-31 through T-36 verify the additive registration wiring. They depend on T-07–T-13
 being applied but are otherwise independent of each other.
 
-- [ ] T-31 `internal/agents/registry_test.go` — Extend `TestDefaultRegistryIncludesAllAgents`
+- [x] T-31 `internal/agents/registry_test.go` — Extend `TestDefaultRegistryIncludesAllAgents`
   (or equivalent) to include `model.AgentHermes`; update expected agent count to N+1 (modify)
 
-- [ ] T-32 `internal/system/config_scan_test.go` — Update total agent count to include `"hermes"`;
+- [x] T-32 `internal/system/config_scan_test.go` — Update total agent count to include `"hermes"`;
   add `"hermes"` to known agents list if present (modify)
 
-- [ ] T-33 `internal/tui/model_test.go` — Add `"hermes"` to `makeDetectionWithAgents()` known
+- [x] T-33 `internal/tui/model_test.go` — Add `"hermes"` to `makeDetectionWithAgents()` known
   agents slice; add `loadSelection` restoration case for hermes (modify)
 
-- [ ] T-34 `internal/cli/validate.go` test — Add `{"hermes", model.AgentHermes}` case to the
+- [x] T-34 `internal/cli/validate.go` test — Add `{"hermes", model.AgentHermes}` case to the
   CLI agent validation mapping test (modify existing test file)
 
-- [ ] T-35 `internal/assets/assets_test.go` (or `internal/assets/skills_frontmatter_test.go`) —
+- [x] T-35 `internal/assets/assets_test.go` (or `internal/assets/skills_frontmatter_test.go`) —
   Add assertion: `assets.ReadFile("hermes/sdd-orchestrator.md")` returns non-empty content
   without error; assert `hermes/persona-gentleman.md` and `hermes/persona-neutral.md` readable
   (add cases to existing test)
 
-- [ ] T-36 `internal/skillregistry/registry.go` — Verify/add `~/.hermes/skills/` to the list of
+- [x] T-36 `internal/skillregistry/registry.go` — Verify/add `~/.hermes/skills/` to the list of
   user+project skill directories that the skill registry scans; add `AgentHermes` to any
   agent-dir mapping if the registry is agent-keyed (modify if needed; no-op if already generic)
 
@@ -260,20 +260,20 @@ being applied but are otherwise independent of each other.
 
 ## Phase 8: Build & Final Verification
 
-- [ ] T-37 `go build ./...` — Must compile with zero errors
-- [ ] T-38 `go vet ./...` — Must pass with zero issues
-- [ ] T-39 `go test ./internal/components/filemerge/...` — All YAML helper tests pass (T-03–T-05)
-- [ ] T-40 `go test ./internal/agents/hermes/...` — All adapter tests pass (T-06–T-07)
-- [ ] T-41 `go test ./internal/agents/...` — Registry test passes (T-31); factory wiring correct
-- [ ] T-42 `go test ./internal/components/permissions/...` — Permissions nil-return test passes
-- [ ] T-43 `go test ./internal/components/engram/...` — All engram inject + setup + recovery tests pass
-- [ ] T-44 `go test ./internal/components/mcp/...` — All MCP YAML inject tests pass
-- [ ] T-45 `go test ./internal/components/sdd/...` — SDD inject tests pass
-- [ ] T-46 `go test ./internal/components/persona/...` — All persona content tests pass
-- [ ] T-47 `go test ./internal/system/...` — Config scan tests pass
-- [ ] T-48 `go test ./internal/tui/...` — TUI state restoration test passes
-- [ ] T-49 `go test ./internal/assets/...` — Asset embed test passes
-- [ ] T-50 `go test ./...` — Full suite green (no regressions across all packages)
+- [x] T-37 `go build ./...` — Must compile with zero errors
+- [x] T-38 `go vet ./...` — Must pass with zero issues
+- [x] T-39 `go test ./internal/components/filemerge/...` — All YAML helper tests pass (T-03–T-05)
+- [x] T-40 `go test ./internal/agents/hermes/...` — All adapter tests pass (T-06–T-07)
+- [x] T-41 `go test ./internal/agents/...` — Registry test passes (T-31); factory wiring correct
+- [x] T-42 `go test ./internal/components/permissions/...` — Permissions nil-return test passes
+- [x] T-43 `go test ./internal/components/engram/...` — All engram inject + setup + recovery tests pass
+- [x] T-44 `go test ./internal/components/mcp/...` — All MCP YAML inject tests pass
+- [x] T-45 `go test ./internal/components/sdd/...` — SDD inject tests pass
+- [x] T-46 `go test ./internal/components/persona/...` — All persona content tests pass
+- [x] T-47 `go test ./internal/system/...` — Config scan tests pass
+- [x] T-48 `go test ./internal/tui/...` — TUI state restoration test passes
+- [x] T-49 `go test ./internal/assets/...` — Asset embed test passes
+- [x] T-50 `go test ./...` — Full suite green (no regressions across all packages)
 
 ---
 
@@ -389,3 +389,5 @@ PR 4 — Cross-Cutting Tests + Build Verification
 **Chain strategy to choose before apply:** `stacked-to-main` (each PR merges to main in order,
 each independently reviewable) OR `feature-branch-chain` (tracker branch accumulates; child PRs
 target tracker; only tracker merges to main). This decision is required before launching `sdd-apply`.
+
+> **Checkbox reconciliation 2026-08-31:** tasks T-18 through T-37 were left unchecked after landing. Every claim was re-verified against current `main` before ticking: `AgentHermes` enum (internal/model/types.go:73); permissions case (inject.go:147); engram hermes branches + isStandardAgent (inject.go:747,824); persona hermes handling (inject.go:548,574); mcp + engram StrategyMergeIntoYAML cases; sdd orchestrator asset `internal/assets/hermes/sdd-orchestrator.md`; hermes personas; skillregistry `~/.hermes/skills` (registry.go:80,105); registry/TUI/config-scan/validate tests reference hermes; extensive hermes test coverage in all target test files (25-65 refs each). Landed via PR #868 and follow-ups. Evidence: scoped suite 30 packages ok (single environmental claude-mcp test excluded via -skip, documented in verify-report).
