@@ -253,3 +253,18 @@ No bounded-review contract, reviewer, refuter, validator, or final verifier may 
 - WHEN its orchestrator guidance is rendered
 - THEN runtime selection remains an optional user choice
 - AND it is not an input to deterministic risk classification
+### Requirement: Compact-v2 persisted receipt compatibility
+
+Compact-v2 persisted state and receipt fields MUST remain schema-v2 compatible. Regeneration MUST preserve the final candidate tree from the current snapshot and the frozen initial/genesis path digest without migration.
+
+#### Scenario: Persisted v2 receipt regenerates
+
+- GIVEN a persisted legacy-v2 compact state and receipt fixture
+- WHEN the receipt is reloaded and regenerated
+- THEN its v2-compatible receipt identity is preserved
+
+#### Scenario: Corrected intended-untracked scope validates
+
+- GIVEN a correction whose final snapshot includes intended-untracked content
+- WHEN lifecycle validation evaluates that final target
+- THEN it returns `allow` using the exact final tree and paths within the frozen genesis envelope
