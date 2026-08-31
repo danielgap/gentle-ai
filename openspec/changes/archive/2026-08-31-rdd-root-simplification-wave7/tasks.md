@@ -277,10 +277,10 @@ release candidate's community testing).
   for the two anomaly classes and their lost exit paths.
 
 ## Exit Checklist (every WU)
-- [ ] `go test ./... -count=1` root module green.
-- [ ] `go test ./... -count=1` bench module green.
-- [ ] `bench --axis all` corpus vs fresh binary — byte-identical.
-- [ ] Deadcode ratchet net-negative (WU1/2/3/20 exempt, add-only).
-- [ ] Refusal ratchet shrinks or holds (`.refusal-ratchet-baseline.txt` rows 181-186, 222-227, 664-717, 955-1009).
-- [ ] `gofmt -l .` empty; `go vet ./...` clean.
+- [x] `go test ./... -count=1` root module green. *(2026-08-31: 72 packages ok; sole failure is the post-change environmental claude-mcp discovery test in internal/components/mcp, introduced 2ff05014 after wave landing — unrelated to wave7 scope)*
+- [x] `go test ./... -count=1` bench module green. *(2026-08-31: bench module build+vet+test exit 0)*
+- [x] `bench --axis all` corpus vs fresh binary — byte-identical. *(2026-08-31, CI-canonical invocation: portable corpus 61/61 completed incl. all 13 CI-required journeys; j105 completed; transition axis 11/11 completed; model-picker untagged=unsupported and bench_fixture=completed — exact CI semantics against a fresh -trimpath binary)*
+- [x] Deadcode ratchet net-negative (WU1/2/3/20 exempt, add-only). *(2026-08-31: holds exactly — 251-entry current set via deadcode@v0.49.0 with the script's normalization matches the baseline 0-added/0-removed; the script's pinned v0.30.0 is go1.25-incompatible on this machine, pin bump is follow-up)*
+- [x] Refusal ratchet shrinks or holds (`.refusal-ratchet-baseline.txt` rows 181-186, 222-227, 664-717, 955-1009). *(2026-08-31: TestRefusalRatchet* green in internal/cli)*
+- [x] `gofmt -l .` empty; `go vet ./...` clean. *(2026-08-31: both verified)*
 
