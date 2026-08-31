@@ -1,3 +1,19 @@
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:82349052c5dded92466252f6aec96b8ba621bb5d50ce2a31524858ffe8c63652
+verdict: pass
+blockers: 0
+critical_findings: 0
+requirements: 28/28
+scenarios: 21/21
+test_command: go test -count=1 ./internal/assets/... ./internal/agents/qwen/... ./internal/cli/...
+test_exit_code: 0
+test_output_hash: sha256:33fff32e8112c53d1cd3674c046e49987f687f3589b9bb7f7c63e216ff9367b3
+build_command: go vet ./...
+build_exit_code: 0
+build_output_hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
 # Verification Report: qwen-code-integration
 
 **Change**: qwen-code-integration
@@ -240,3 +256,20 @@ None
 **PASS**
 
 All 30 tasks complete, 40/40 spec scenarios compliant, build and all 17 test packages pass, design decisions faithfully followed. No critical issues found.
+
+
+---
+
+# Re-verification 2026-08-31 (native envelope)
+
+## Fresh evidence
+
+- `go test -count=1 ./internal/assets/... ./internal/agents/qwen/... ./internal/cli/...` → exit 0, 3 packages ok (output hash sha256:33fff32e8112c53d1cd3674c046e49987f687f3589b9bb7f7c63e216ff9367b3).
+- `go vet ./...` → exit 0 (empty output).
+- Feature alive on `main`: `internal/assets/qwen/sdd-orchestrator.md`, `internal/agents/qwen/adapter.go` (+ tests), `AgentQwenCode` enum in `internal/model/types.go`.
+- Task checkboxes: reconciled 30/30 (bookkeeping drift; original report documented completion).
+- Envelope counts follow the parser's standard markers on spec.md: 28 requirements, 21 scenarios (the original report's "40/40 scenarios" used its own broader labeling).
+
+## Verdict
+
+`pass` — no new warnings; original PASS findings stand.
