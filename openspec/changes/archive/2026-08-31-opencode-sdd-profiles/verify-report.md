@@ -1,3 +1,19 @@
+```yaml
+schema: gentle-ai.verify-result/v1
+evidence_revision: sha256:e40d0c2b001997e7df2bc45a364ede44ebf3912c06e320cf2ceb5c1d709820f7
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
+requirements: 23/23
+scenarios: 39/39
+test_command: go test -count=1 ./internal/components/sdd/... ./internal/cli/... ./internal/tui/...
+test_exit_code: 0
+test_output_hash: sha256:f852070f7551b9269ac1b970b5adc36d66b7c6bff2a3afa1302673ae4e18b2fc
+build_command: go vet ./...
+build_exit_code: 0
+build_output_hash: sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+```
+
 # Verification Report: opencode-sdd-profiles
 
 **Change**: `opencode-sdd-profiles`
@@ -221,3 +237,19 @@ The implementation is feature-complete, builds cleanly, and all 37 test packages
 3. (**WARNING**) Fix `ScreenProfileCreate` missing-cache guard (task 6.2) or explicitly descope it
 
 The codebase is ready for use. The warnings are improvements, not blockers for the feature to work correctly.
+
+
+---
+
+# Re-verification 2026-08-31 (native envelope)
+
+## Fresh evidence
+
+- `go test -count=1 ./internal/components/sdd/... ./internal/cli/... ./internal/tui/...` → exit 0, 4 packages ok (output hash sha256:f852070f7551b9269ac1b970b5adc36d66b7c6bff2a3afa1302673ae4e18b2fc).
+- `go vet ./...` → exit 0 (empty output).
+- Task checkboxes: 38/38 complete (the original WARNING-1 about unchecked boxes was reconciled before this envelope).
+- Envelope totals sum the three delta specs: sdd-profiles (13 req / 24 scen) + gga (2/6) + sdd-profile-sync (8/9) = 23 requirements, 39 scenarios.
+
+## Warnings carried forward
+
+- R-PROF-31 sync-time model warning is still not implemented (internal/cli/sync.go has no warning when a profile sub-agent model is missing from the OpenCode model cache; the model is preserved via deep merge but no warning is logged). Low impact, unchanged from the original verification.
