@@ -226,17 +226,17 @@ func TestAllEmbeddedAssetsAreReadable(t *testing.T) {
 		"claude/output-style-neutral.md",
 		"claude/persona-gentleman.md",
 		"claude/sdd-orchestrator.md",
-		"claude/commands/sdd-apply.md",
-		"claude/commands/sdd-archive.md",
-		"claude/commands/sdd-continue.md",
-		"claude/commands/sdd-explore.md",
-		"claude/commands/sdd-ff.md",
-		"claude/commands/sdd-init.md",
-		"claude/commands/sdd-new.md",
-		"claude/commands/sdd-onboard.md",
-		"claude/commands/sdd-research.md",
-		"claude/commands/sdd-status.md",
-		"claude/commands/sdd-verify.md",
+		"claude/commands/gentle-sdd-apply.md",
+		"claude/commands/gentle-sdd-archive.md",
+		"claude/commands/gentle-sdd-continue.md",
+		"claude/commands/gentle-sdd-explore.md",
+		"claude/commands/gentle-sdd-ff.md",
+		"claude/commands/gentle-sdd-init.md",
+		"claude/commands/gentle-sdd-new.md",
+		"claude/commands/gentle-sdd-onboard.md",
+		"claude/commands/gentle-sdd-research.md",
+		"claude/commands/gentle-sdd-status.md",
+		"claude/commands/gentle-sdd-verify.md",
 		"claude/agents/sdd-init.md",
 		"claude/agents/sdd-onboard.md",
 		"claude/agents/sdd-research.md",
@@ -516,7 +516,7 @@ func TestSDDVerificationAndArchiveContractsIgnoreReviewContext(t *testing.T) {
 func TestSDDVerifyAndArchiveCommandsRouteOnlyFromRefreshedStatus(t *testing.T) {
 	const verifyRoute = "After verify returns, rerun native SDD status and route only from its refreshed `nextRecommended`."
 	for _, path := range []string{
-		"claude/commands/sdd-verify.md",
+		"claude/commands/gentle-sdd-verify.md",
 		"opencode/commands/sdd-verify.md",
 	} {
 		t.Run(path, func(t *testing.T) {
@@ -528,7 +528,7 @@ func TestSDDVerifyAndArchiveCommandsRouteOnlyFromRefreshedStatus(t *testing.T) {
 
 	const archiveRoute = "Archive only when refreshed native SDD status reports `dependencies.archive: ready` and `nextRecommended: archive`."
 	for _, path := range []string{
-		"claude/commands/sdd-archive.md",
+		"claude/commands/gentle-sdd-archive.md",
 		"opencode/commands/sdd-archive.md",
 		"skills/sdd-archive/SKILL.md",
 	} {
@@ -558,7 +558,7 @@ func TestSDDVerifyAdmissionPrecedesPersistence(t *testing.T) {
 	if count := strings.Count(MustRead("skills/sdd-verify/SKILL.md"), "sdd-verify-validate"); count < 2 {
 		t.Fatalf("both sdd-verify model sections require admission, got %d occurrences", count)
 	}
-	for _, path := range []string{"claude/agents/sdd-verify.md", "claude/commands/sdd-verify.md", "cursor/agents/sdd-verify.md", "kimi/agents/sdd-verify.md", "kiro/agents/sdd-verify.md"} {
+	for _, path := range []string{"claude/agents/sdd-verify.md", "claude/commands/gentle-sdd-verify.md", "cursor/agents/sdd-verify.md", "kimi/agents/sdd-verify.md", "kiro/agents/sdd-verify.md"} {
 		content := MustRead(path)
 		if skill, save := strings.Index(content, "sdd-verify/SKILL.md"), strings.LastIndex(content, "mem_save"); skill < 0 || save < 0 || skill > save {
 			t.Fatalf("%s must load the shared verify contract before persistence", path)
@@ -1020,47 +1020,17 @@ func TestFourRReviewAgentAssets(t *testing.T) {
 	}
 }
 
-func TestOpenCodeSDDOrchestratorRequiresSessionPreflight(t *testing.T) {
+func TestOpenCodeSDDOrchestratorDoesNotOwnSessionPreflight(t *testing.T) {
 	content := MustRead("opencode/sdd-orchestrator.md")
-
-	for _, required := range []string{
-		"### SDD Session Preflight (HARD GATE)",
-		"Before executing ANY SDD command or natural-language SDD request",
-		"Execution mode",
-		"Artifact store",
-		"Chained PR strategy",
-		"Review budget",
-		"`openspec/config.yaml`, existing SDD artifacts, previous `sdd-init` results, or installed SDD assets do NOT satisfy session preflight",
-		"Use the `question` tool for SDD Session Preflight",
-		"only when it is available in the current interactive runtime and all four groups are exactly representable",
-		"follow the Lossless Blocking Prompts fallback above and STOP",
-		"When the native route is representable, ask all four preflight groups in one single `question` tool call",
-		"OpenCode can render the groups as tabs",
-		"Do NOT run this as a sequential wizard",
-		"Do NOT issue four separate `question` tool calls",
-		"The single `question` tool call must contain these four localized groups in this order",
-		"Match the user's current language and active persona",
-		"Treat the preflight UI as direct orchestrator conversation",
-		"not as a generated technical artifact",
-		"Technical artifacts still default to English",
-		"this UI follows the user's conversation language/persona",
-		"Do NOT mix languages inside one grouped question",
-		"Do NOT show option codes",
-		"Do NOT show canonical values",
-		"map the selected human labels to canonical values internally",
-		"¿Quiere ajustar algo o continuamos?",
-		"Artifacts: OpenSpec, Engram, Both",
-		"Review: 400 lines, 800 lines, Other",
-		"### SDD Entry Routing (MANDATORY)",
-		"Never launch `sdd-apply` just because the user asked to implement a feature",
-		"In **Interactive** mode, between phases",
-		"Ask before launching the next phase",
-		"Interactive approval is phase-scoped",
-		"approve only the immediate next phase",
-		"{{GENTLE_AI_RESEARCH_LIFECYCLE}}",
+	for _, retired := range []string{
+		"### SDD Session Preflight (HARD GATE)", "Before executing ANY SDD command or natural-language SDD request",
+		"Use the `question` tool for SDD Session Preflight", "all four preflight groups in one single `question` tool call",
+		"four localized groups in this order", "Review: 400 lines, 800 lines, Other",
+		"Interactive -> `interactive`", "OpenSpec -> `openspec`", "Ask me -> `ask-on-risk`",
+		"User-facing preflight question format:", "Map answers to canonical values", "A1", "A2", "B1", "C1", "D1",
 	} {
-		if !strings.Contains(content, required) {
-			t.Fatalf("opencode/sdd-orchestrator.md missing required preflight wording %q", required)
+		if strings.Contains(content, retired) {
+			t.Fatalf("raw opencode/sdd-orchestrator.md still owns retired preflight content %q", retired)
 		}
 	}
 }
@@ -1096,22 +1066,15 @@ func TestOpenCodeSDDOrchestratorDelegationVisibility(t *testing.T) {
 
 func TestOpenCodeSDDOrchestratorPreflightDoesNotUseVisibleCodesOrCanonicalUIValues(t *testing.T) {
 	content := MustRead("opencode/sdd-orchestrator.md")
-	start := strings.Index(content, "User-facing preflight question format:")
-	if start < 0 {
-		t.Fatal("opencode/sdd-orchestrator.md missing preflight question format block")
+	if start := strings.Index(content, "User-facing preflight question format:"); start >= 0 {
+		t.Fatalf("raw opencode/sdd-orchestrator.md still owns preflight UI at %d", start)
 	}
-	end := strings.Index(content[start:], "Map answers to canonical values")
-	if end < 0 {
-		t.Fatal("opencode/sdd-orchestrator.md missing end of preflight question format block")
+	if end := strings.Index(content, "Map answers to canonical values"); end >= 0 {
+		t.Fatalf("raw opencode/sdd-orchestrator.md still owns preflight mappings at %d", end)
 	}
-	uiBlock := content[start : start+end]
-
-	// `ask-always` used to sit here as a canonical value. It was never in the
-	// consumer's domain, so keeping it would have let this guard vouch for a
-	// retired vocabulary; the canonical delivery strategy is `ask-on-risk`.
-	for _, forbidden := range []string{"A1", "A2", "B1", "C1", "D1", "`interactive`", "`openspec`", "`ask-on-risk`"} {
-		if strings.Contains(uiBlock, forbidden) {
-			t.Fatalf("preflight UI instructions should not expose option codes or canonical values; found %q", forbidden)
+	for _, forbidden := range []string{"A1", "A2", "B1", "C1", "D1", "Interactive -> `interactive`", "OpenSpec -> `openspec`", "Ask me -> `ask-on-risk`"} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("raw opencode/sdd-orchestrator.md still owns preflight content %q", forbidden)
 		}
 	}
 }
@@ -1120,33 +1083,12 @@ func TestClaudeSDDWorkflowRequiresSessionPreflight(t *testing.T) {
 	content := MustRead("claude/sdd-orchestrator-workflow.md")
 
 	for _, required := range []string{
-		"### SDD Session Preflight (HARD GATE)",
-		"Before executing ANY SDD command or natural-language SDD request",
-		"**Execution mode**",
-		"**Artifact store**",
-		"**Chained PR strategy**",
-		"**Review budget**",
-		"`openspec/config.yaml`, existing SDD artifacts, previous `sdd-init` results, or installed SDD assets do NOT satisfy session preflight",
-		"Use the built-in `AskUserQuestion` tool for SDD Session Preflight",
-		"only when it is available in the current interactive runtime and all four groups are exactly representable",
-		"follow the Lossless Blocking Prompts fallback in the orchestrator rule and STOP",
-		"When the native route is representable, ask all four preflight groups in one single `AskUserQuestion` tool call",
-		"Do NOT run this as a sequential wizard",
-		"Do NOT issue four separate `AskUserQuestion` tool calls",
-		"Match the user's current language and active persona",
-		"Do NOT show option codes",
-		"Do NOT show canonical values",
-		"map the selected human labels to canonical values internally",
-		"1. Pace: Interactive, Automatic.",
-		"2. Artifacts: OpenSpec, Engram, Both.",
-		"3. PRs: Ask me, Single PR, Auto.",
-		"4. Review: 400 lines, 800 lines, Other.",
+		"Session preflight is projected here by the installer from the shared canonical authority",
+		"### SDD Init Guard (MANDATORY)",
 		"### SDD Entry Routing (MANDATORY)",
 		"Never launch `sdd-apply` just because the user asked to implement a feature",
 		"Only launch `sdd-apply` when all are true",
-		"If any dependency is missing, STOP and propose `/sdd-new` or `/sdd-ff`; do not implement",
-		"or `hybrid` when Engram is callable",
-		"Both -> `hybrid`",
+		"If any dependency is missing, STOP and propose `/gentle-sdd-new` or `/gentle-sdd-ff`; do not implement",
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("claude/sdd-orchestrator-workflow.md missing required preflight wording %q", required)
@@ -1154,8 +1096,10 @@ func TestClaudeSDDWorkflowRequiresSessionPreflight(t *testing.T) {
 	}
 
 	for _, forbidden := range []string{
-		"`question` tool",
-		"groups as tabs",
+		"`question` tool", "AskUserQuestion", "groups as tabs",
+		"### SDD Session Preflight (HARD GATE)",
+		"gentle-ai:sdd-session-preflight", "Required preflight choices:",
+		"1. Pace:", "Both ->", "800 lines", "Other", "all four",
 	} {
 		if strings.Contains(content, forbidden) {
 			t.Fatalf("claude/sdd-orchestrator-workflow.md must use Claude Code's AskUserQuestion mechanics, not OpenCode wording %q", forbidden)
@@ -1180,11 +1124,10 @@ func TestClaudeSDDWorkflowRequiresSessionPreflight(t *testing.T) {
 		}
 	}
 
-	preflight := strings.Index(content, "### SDD Session Preflight (HARD GATE)")
-	routing := strings.Index(content, "### SDD Entry Routing (MANDATORY)")
-	initGuard := strings.Index(content, "### SDD Init Guard (MANDATORY)")
-	if !(preflight < routing && routing < initGuard) {
-		t.Fatalf("claude/sdd-orchestrator-workflow.md section order must be preflight (%d) < entry routing (%d) < init guard (%d)", preflight, routing, initGuard)
+	routing := "### SDD Entry Routing (MANDATORY)"
+	initGuard := "### SDD Init Guard (MANDATORY)"
+	if strings.Count(content, routing) != 1 || strings.Count(content, initGuard) != 1 || strings.Index(content, routing) >= strings.Index(content, initGuard) {
+		t.Fatal("Claude projection template requires unique routing then init anchors")
 	}
 }
 
@@ -1240,7 +1183,6 @@ func TestSDDOrchestratorAssetsDefaultToAutomatic(t *testing.T) {
 func TestSDDFFCommandsHonorInteractiveMode(t *testing.T) {
 	for _, path := range []string{
 		"opencode/commands/sdd-ff.md",
-		"claude/commands/sdd-ff.md",
 	} {
 		t.Run(path, func(t *testing.T) {
 			content := MustRead(path)
@@ -2247,9 +2189,13 @@ func TestSDDOrchestratorsUseNativeRuntimeAttemptAuthority(t *testing.T) {
 		"gentle-ai sdd-attempt settle",
 		"state: proceed",
 		"opaque `token`",
-		"successor-lineage",
-		"the bound lineage remains its own successor",
 		"--request-id <settle-id>", "distinct from the acquire operation's request ID", "idempotent replay",
+		// #3696: the settle invocation is spelled out with every flag the CLI
+		// requires; an elided `...` sent orchestrators into a flag-by-flag
+		// refusal loop, and `--successor-lineage` never existed on settle.
+		"--outcome <passed|failed>", "--evidence-revision <sha256>", "--diagnosis \"<proven-diagnosis>\"",
+		"--harness-disposition <reused|invalidated>", "--cleanup-evidence \"<evidence>\"", "--process-evidence \"<evidence>\"",
+		"--outcome interrupted", "omit `--evidence-revision`", "--remediates-evidence-revision <sha256>",
 		"status|begin|finish|reset",
 		"never automatic",
 		causalFailureDisclosure,
@@ -2264,6 +2210,9 @@ func TestSDDOrchestratorsUseNativeRuntimeAttemptAuthority(t *testing.T) {
 			if !strings.Contains(section, want) {
 				t.Fatalf("%s missing native runtime-attempt authority wording %q", path, want)
 			}
+		}
+		if strings.Contains(section, "--successor-lineage") {
+			t.Fatalf("%s names --successor-lineage, which gentle-ai sdd-attempt settle does not define", path)
 		}
 		last := -1
 		for _, label := range []string{
@@ -2480,7 +2429,7 @@ func TestSDDArchiveFinalStateAuthorityContract(t *testing.T) {
 		"cursor/agents/sdd-archive.md",
 		"kiro/agents/sdd-archive.md",
 		"kimi/agents/sdd-archive.md",
-		"claude/commands/sdd-archive.md",
+		"claude/commands/gentle-sdd-archive.md",
 		"opencode/commands/sdd-archive.md",
 	} {
 		content := MustRead(path)
@@ -2913,4 +2862,66 @@ func isolatedGitEnvironment() []string {
 		}
 	}
 	return append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull, "GIT_CONFIG_COUNT=0")
+}
+
+// #2855: cwd alone cannot identify the selected change and artifact store.
+// Initial and latched failures must offer guidance, never a guessed command
+// (including the old root/empty-cwd placeholder from #3516).
+func TestSDDTaskResultArtifactsPluginUsesCoordinatorGuidanceWithoutIdentity(t *testing.T) {
+	source := MustRead("opencode/plugins/sdd-task-result-artifacts.ts")
+	if got := strings.Count(source, "continuation: SDD_TASK_CONTINUATION_GUIDANCE"); got != 2 {
+		t.Fatalf("initial and latched failures must share safe guidance; got %d uses", got)
+	}
+	for _, forbidden := range []string{"gentle-ai sdd-status", "<repo>", "replace <repo>"} {
+		if strings.Contains(source, forbidden) {
+			t.Errorf("SDD task plugin retains an identity-free command or placeholder: %q", forbidden)
+		}
+	}
+	for _, path := range []string{"opencode/sdd-orchestrator.md", "skills/_shared/sdd-phase-common.md"} {
+		consumer := MustRead(path)
+		for _, want := range []string{
+			"follow its `continuation` exactly once",
+			"execute it only when supplied as a command",
+			"Never turn guidance into a guessed command",
+		} {
+			if !strings.Contains(consumer, want) {
+				t.Errorf("%s missing safe continuation consumption: %q", path, want)
+			}
+		}
+	}
+}
+
+// #2212: the spec phase writes every capability under the change folder.
+// The shipped skills used to send new capabilities to openspec/specs/, a
+// root the dispatcher never reads, so the actor could follow the skill and
+// still get nextRecommended: spec forever.
+func TestSDDSpecAndProposeNameTheChangeLocalSpecLocation(t *testing.T) {
+	spec := MustRead("skills/sdd-spec/SKILL.md")
+	for _, required := range []string{
+		"This becomes a NEW FULL spec: openspec/changes/{change-name}/specs/<capability-name>/spec.md",
+		"never write to `openspec/specs/` during the spec phase",
+		"sdd-archive promotes it to `openspec/specs/<capability-name>/spec.md`",
+		"create a FULL spec (not a delta) at `openspec/changes/{change-name}/specs/{domain}/spec.md`",
+	} {
+		if !strings.Contains(spec, required) {
+			t.Fatalf("skills/sdd-spec/SKILL.md missing change-local spec location wording %q", required)
+		}
+	}
+	if strings.Contains(spec, "This becomes a NEW full spec: openspec/specs/<capability-name>/spec.md") {
+		t.Fatalf("skills/sdd-spec/SKILL.md still sends new capabilities to the canonical openspec/specs/ root")
+	}
+
+	propose := MustRead("skills/sdd-propose/SKILL.md")
+	required := "gets a full spec at `openspec/changes/{change-name}/specs/<name>/spec.md` during the spec phase and becomes `openspec/specs/<name>/spec.md` at archive"
+	if got := strings.Count(propose, required); got != 2 {
+		t.Fatalf("skills/sdd-propose/SKILL.md contains %d copies of %q, want 2 (template comment and checklist)", got, required)
+	}
+	for _, forbidden := range []string{
+		"Each becomes a new `openspec/specs/<name>/spec.md`",
+		"each will become `openspec/specs/<name>/spec.md`",
+	} {
+		if strings.Contains(propose, forbidden) {
+			t.Fatalf("skills/sdd-propose/SKILL.md still states the spec-phase location as the archive outcome: %q", forbidden)
+		}
+	}
 }

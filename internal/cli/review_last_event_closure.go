@@ -43,7 +43,24 @@ func reviewApprovedAcknowledgementTransition(repo string, acknowledgement review
 // RunReviewAcknowledgeApproved executes the one v2-local acknowledgement
 // continuation. It intentionally returns no independent result: ambiguous
 // delivery is resolved by rerunning the STATUS transition against authority.
-func RunReviewAcknowledgeApproved(args []string, _ io.Writer) error {
+// reviewAcknowledgedSchema names the one typed answer the burn prints. The
+// acknowledgement is the most consequential step of the lifecycle, and until
+// #3946 it succeeded in silence: a caller could only infer the burn from a
+// later STATUS offering a fresh START. Every sibling terminal command already
+// returns its own envelope, so this one does too.
+const reviewAcknowledgedSchema = "gentle-ai.review-acknowledged/v1"
+
+type reviewAcknowledgedResult struct {
+	Schema           string `json:"schema"`
+	Operation        string `json:"operation"`
+	Action           string `json:"action"`
+	LineageID        string `json:"lineage_id"`
+	TargetIdentity   string `json:"target_identity"`
+	ConsumedRevision string `json:"consumed_revision"`
+	Authority        string `json:"authority"`
+}
+
+func RunReviewAcknowledgeApproved(args []string, stdout io.Writer) error {
 	flags := newReviewFlagSet("review acknowledge-approved", io.Discard, "Acknowledge one approved review authority using its exact v2 continuation.")
 	cwd := flags.String("cwd", ".", "repository path")
 	lineage := flags.String("lineage", "", "exact approved review lineage")
@@ -62,7 +79,13 @@ func RunReviewAcknowledgeApproved(args []string, _ io.Writer) error {
 	if *lineage == "" || *target == "" || *expectedRevision == "" || *token == "" {
 		return errors.New("review acknowledge-approved requires --lineage, --target, --expected-revision, and --token") // refusal:by-design operator-knowledge: run the exact v2 acknowledgement continuation emitted by STATUS or terminal closure
 	}
-	return reviewtransaction.AcknowledgeApprovedCompactAuthority(context.Background(), *cwd, *lineage, *target, *expectedRevision, *token)
+	if err := reviewtransaction.AcknowledgeApprovedCompactAuthority(context.Background(), *cwd, *lineage, *target, *expectedRevision, *token); err != nil {
+		return err
+	}
+	return encodeReviewJSON(stdout, reviewAcknowledgedResult{
+		Schema: reviewAcknowledgedSchema, Operation: "review/acknowledge-approved", Action: "acknowledged",
+		LineageID: *lineage, TargetIdentity: *target, ConsumedRevision: *expectedRevision, Authority: "burned",
+	})
 }
 
 func closeCorrectionOnCapturedValidator(
@@ -114,8 +137,10 @@ func closeCorrectionOnCapturedValidator(
 	case reviewtransaction.StateApproved:
 		result.Action = reviewApprovedLastEventAcknowledgementAction
 		result.Acknowledgement = reviewApprovedAcknowledgementTransition(repo, acknowledgement)
+		telemetryRecordReviewOutcome("approved")
 	case reviewtransaction.StateEscalated:
 		result.Action = "the targeted validator rejected the correction; maintainer action is informational"
+		telemetryRecordReviewOutcome("escalated")
 	default:
 		return nil, fmt.Errorf("targeted validator capture produced unsupported state %q", state.State) // refusal:by-design human-authority: an unmodeled terminal authority outcome requires maintainer inspection
 	}
@@ -256,14 +281,17 @@ func closeReviewOnLastCapturedLens(
 		result.Action = reviewApprovedLastEventAcknowledgementAction
 		result.AdvisoryFindings = reviewtransaction.AdvisoryFindingSetFor(state)
 		result.Acknowledgement = reviewApprovedAcknowledgementTransition(repo, acknowledgement)
+		telemetryRecordReviewOutcome("approved")
 	case reviewtransaction.StateCorrectionRequired:
 		result.Action = "candidate-caused severe findings require one bounded correction"
 		result.StatusContinuation = reviewCorrectionStatusContinuation(repo, state, revision, runtime)
 		if result.StatusContinuation == nil {
 			return nil, fmt.Errorf("correction-required review has unsupported initial target kind %q", state.InitialSnapshot.Kind) // refusal:by-design human-authority: only a recognized frozen selector may reopen correction planning
 		}
+		telemetryRecordReviewOutcome("correction")
 	case reviewtransaction.StateEscalated:
 		result.Action = "review completed with inconclusive severe findings; maintainer action is informational"
+		telemetryRecordReviewOutcome("escalated")
 	default:
 		return nil, fmt.Errorf("last reviewer capture produced unsupported state %q", state.State) // refusal:by-design human-authority: an unmodeled terminal authority outcome requires maintainer inspection
 	}

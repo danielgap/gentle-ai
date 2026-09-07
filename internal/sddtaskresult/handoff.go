@@ -17,6 +17,8 @@ const handoffSchema = "gentle-ai.sdd-task-result-failure/v1"
 
 const retryGuidance = "Do not retry or advance SDD; inspect the existing artifact state and surface the terminal failure to the user."
 
+const unscopedContinuation = "Return to the active SDD coordinator and inspect only its retained structured status for the selected change and artifact store. If that status is unavailable, report this terminal failure and ask the user to select the change and artifact store. Do not infer either, run unscoped status discovery, retry, or launch another phase."
+
 // routeToken bounds what may be echoed back as taskModel. An unvalidated
 // provider string would otherwise reach a consumer inside an envelope it is
 // told to preserve verbatim.
@@ -45,8 +47,14 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
-func continuationFor(cwd string) string {
-	return "gentle-ai sdd-status --cwd " + shellQuote(cwd) + " --json"
+// Without a change, defer to retained coordinator status rather than discover
+// unrelated state (#2855). Preserve the existing explicit-change command (#2790);
+// naming a change alone does not establish artifact-store identity.
+func continuationFor(cwd, change string) string {
+	if change == "" {
+		return unscopedContinuation
+	}
+	return "gentle-ai sdd-status " + shellQuote(change) + " --cwd " + shellQuote(cwd) + " --json"
 }
 
 func encode(payload handoffPayload) string {
@@ -60,7 +68,7 @@ func encode(payload handoffPayload) string {
 
 // Handoff renders the typed terminal failure for one classified phase result.
 // An admitted result has no handoff and returns the empty string.
-func Handoff(class Class, phase, cwd, taskModel string) string {
+func Handoff(class Class, phase, cwd, change, taskModel string) string {
 	code := class.FailureCode()
 	if code == "" {
 		return ""
@@ -71,7 +79,7 @@ func Handoff(class Class, phase, cwd, taskModel string) string {
 	}
 	payload := handoffPayload{
 		SchemaName: handoffSchema, Status: "blocked", Code: code, Phase: phase,
-		Summary: summary, Continuation: continuationFor(cwd),
+		Summary: summary, Continuation: continuationFor(cwd, change),
 	}
 	if routeToken.MatchString(taskModel) {
 		payload.TaskModel = taskModel
@@ -82,12 +90,12 @@ func Handoff(class Class, phase, cwd, taskModel string) string {
 // DispatchLatched renders the refusal a later launch receives after an earlier
 // phase failed in the same session. That launch never dispatched, so it names
 // the phase it requested alongside the phase and code that actually failed.
-func DispatchLatched(requested, latchedPhase, latchedCode, cwd string) string {
+func DispatchLatched(requested, latchedPhase, latchedCode, cwd, change string) string {
 	return encode(handoffPayload{
 		SchemaName: handoffSchema, Status: "blocked", Code: "sdd_task_dispatch_latched",
 		Phase: requested, LatchedPhase: latchedPhase, LatchedCode: latchedCode,
 		Summary:      fmt.Sprintf("%s was not dispatched. Earlier in this session %s returned %s, and SDD launches stay latched afterwards so a failed phase is never silently retried and no later phase advances on top of it. No provider call, no subagent, and no artifact write happened for this launch, so it produced no new evidence about the original failure.", requested, latchedPhase, latchedCode),
-		Continuation: continuationFor(cwd),
+		Continuation: continuationFor(cwd, change),
 		Exit:         "Inspect the artifact state the original failure left, surface it to the user, and start a new session to launch SDD phases again. Relaunching in this session cannot dispatch.",
 	})
 }
