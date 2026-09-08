@@ -38,6 +38,15 @@ func TargetPath(homeDir string, adapter agents.Adapter) string {
 // custom /usr/local/bin, Apple Silicon /opt/homebrew/bin, NixOS
 // /run/current-system/sw/bin). Agents whose ssh lives elsewhere still hit the
 // always-on routing guidance "Remote execution boundary" section.
+// The env(1) and exec -a wrapper entries (#4330 review follow-up) close the
+// remaining resolution bypasses: env execs the utility after optional flags
+// and NAME=VALUE assignments (env ssh, env -i ssh, env FOO=1 ssh ...), and
+// exec -a renames argv[0] before executing it. "env X" keeps its own exact
+// and ":*" prefix forms because the internal-glob "env * X *" pattern needs
+// a space-delimited " X" token. The glob entries are deliberately
+// conservative: a benign command like `env LC_ALL=C sort ssh_keys.txt` also
+// matches "env * ssh *" and is denied — a false positive toward deny is the
+// safe side of a remote-execution boundary.
 var claudeCodeOverlayJSON = []byte(`{
   "permissions": {
     "defaultMode": "bypassPermissions",
@@ -76,6 +85,10 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(\\ssh:*)",
       "Bash(command ssh:*)",
       "Bash(exec ssh:*)",
+      "Bash(env ssh)",
+      "Bash(env ssh:*)",
+      "Bash(env * ssh *)",
+      "Bash(exec -a * ssh *)",
       "Bash(scp)",
       "Bash(scp:*)",
       "Bash(/bin/scp:*)",
@@ -86,6 +99,10 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(\\scp:*)",
       "Bash(command scp:*)",
       "Bash(exec scp:*)",
+      "Bash(env scp)",
+      "Bash(env scp:*)",
+      "Bash(env * scp *)",
+      "Bash(exec -a * scp *)",
       "Bash(sftp)",
       "Bash(sftp:*)",
       "Bash(/bin/sftp:*)",
@@ -96,6 +113,10 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(\\sftp:*)",
       "Bash(command sftp:*)",
       "Bash(exec sftp:*)",
+      "Bash(env sftp)",
+      "Bash(env sftp:*)",
+      "Bash(env * sftp *)",
+      "Bash(exec -a * sftp *)",
       "Bash(rsync)",
       "Bash(rsync:*)",
       "Bash(/bin/rsync:*)",
@@ -105,7 +126,11 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(/run/current-system/sw/bin/rsync:*)",
       "Bash(\\rsync:*)",
       "Bash(command rsync:*)",
-      "Bash(exec rsync:*)"
+      "Bash(exec rsync:*)",
+      "Bash(env rsync)",
+      "Bash(env rsync:*)",
+      "Bash(env * rsync *)",
+      "Bash(exec -a * rsync *)"
     ]
   }
 }
@@ -122,6 +147,17 @@ var claudeCodeOverlayJSON = []byte(`{
 // Absolute paths get one entry per canonical install prefix; the "/X *"
 // entries additionally cover backslash-escaped invocations (\ssh ...) because
 // the matcher normalizes backslashes to forward slashes before matching.
+// The env(1) and exec -a wrapper entries (#4330 review follow-up) close the
+// remaining resolution bypasses: env execs the utility after optional flags
+// and NAME=VALUE assignments (env ssh, env -i ssh, env FOO=1 ssh ...), and
+// exec -a renames argv[0] before executing it. wildcard.ts compiles every
+// "*" to ".*" (only the trailing " *" becomes an optional group), so
+// "env * X *" matches "env -i X ..." and "env NAME=VALUE X ..." while
+// "env X *" covers the flag-free form including the bare invocation. The
+// glob entries are deliberately conservative: a benign command like
+// `env LC_ALL=C sort ssh_keys.txt` also matches "env * ssh *" and is denied
+// — a false positive toward deny is the safe side of a remote-execution
+// boundary.
 var openCodeOverlayJSON = []byte(`{
   "permission": {
     "bash": {
@@ -142,6 +178,9 @@ var openCodeOverlayJSON = []byte(`{
       "/ssh *": "deny",
       "command ssh *": "deny",
       "exec ssh *": "deny",
+      "env ssh *": "deny",
+      "env * ssh *": "deny",
+      "exec -a * ssh *": "deny",
       "scp": "deny",
       "scp *": "deny",
       "/bin/scp *": "deny",
@@ -152,6 +191,9 @@ var openCodeOverlayJSON = []byte(`{
       "/scp *": "deny",
       "command scp *": "deny",
       "exec scp *": "deny",
+      "env scp *": "deny",
+      "env * scp *": "deny",
+      "exec -a * scp *": "deny",
       "sftp": "deny",
       "sftp *": "deny",
       "/bin/sftp *": "deny",
@@ -162,6 +204,9 @@ var openCodeOverlayJSON = []byte(`{
       "/sftp *": "deny",
       "command sftp *": "deny",
       "exec sftp *": "deny",
+      "env sftp *": "deny",
+      "env * sftp *": "deny",
+      "exec -a * sftp *": "deny",
       "rsync": "deny",
       "rsync *": "deny",
       "/bin/rsync *": "deny",
@@ -171,7 +216,10 @@ var openCodeOverlayJSON = []byte(`{
       "/run/current-system/sw/bin/rsync *": "deny",
       "/rsync *": "deny",
       "command rsync *": "deny",
-      "exec rsync *": "deny"
+      "exec rsync *": "deny",
+      "env rsync *": "deny",
+      "env * rsync *": "deny",
+      "exec -a * rsync *": "deny"
     },
     "read": {
       "*": "allow",
