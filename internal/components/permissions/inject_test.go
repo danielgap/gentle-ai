@@ -67,15 +67,21 @@ func TestRemoteMatcherBoundaryFixtures(t *testing.T) {
 	// wrapper invocations of the remote shell utilities are denied by the
 	// overlay itself. Pattern-only rules are bypassable through these forms
 	// (the command token is not the bare utility name), so the deny entries
-	// enumerate them explicitly instead of relying on guidance alone.
-	for _, input := range []string{"/usr/bin/ssh example.invalid", "/bin/scp file example.invalid:file", "\\ssh example.invalid", "command ssh example.invalid", "exec rsync -a src dst"} {
+	// enumerate them explicitly instead of relying on guidance alone. The
+	// env(1) and exec -a forms join the boundary after the #4330 review: env
+	// execs the utility as one parsed command node, so the full node text
+	// ("env -i ssh ...", "env NAME=VALUE ssh ...", "exec -a alias ssh ...")
+	// reaches the matcher and must be denied there.
+	for _, input := range []string{"/usr/bin/ssh example.invalid", "/bin/scp file example.invalid:file", "\\ssh example.invalid", "command ssh example.invalid", "exec rsync -a src dst", "env ssh example.invalid", "env -i scp file example.invalid:file", "env CUSTOM=1 sftp example.invalid", "exec -a benign rsync -a src dst"} {
 		if got := remoteAction(t, openCodeOverlayJSON, input); got != "deny" {
 			t.Errorf("bypass invocation %q not denied: %s", input, got)
 		}
 	}
 	// These remain matcher inputs, not shell programs. bash.ts extracts command
-	// nodes separately; no claim is made about parsing arbitrary shell syntax.
-	for _, input := range []string{"env ssh example.invalid", "true && ssh example.invalid", `python -c 'import subprocess'`} {
+	// nodes separately, so the "&&" chain never reaches the matcher as one
+	// string and the python program is a different command entirely; no claim
+	// is made about parsing arbitrary shell syntax.
+	for _, input := range []string{"true && ssh example.invalid", `python -c 'import subprocess'`} {
 		if got := remoteAction(t, openCodeOverlayJSON, input); got != "allow" {
 			t.Errorf("unsupported matcher input %q unexpectedly intercepted: %s", input, got)
 		}
@@ -719,6 +725,20 @@ func remoteShellEscapeForms(tool, openCodeSuffix, claudeCodeSuffix string) (open
 	return openCode, claudeCode
 }
 
+// remoteShellEnvWrapperForms returns the env(1) and exec -a wrapper deny
+// surfaces one tool needs (#4330 review follow-up): env execs the utility
+// after optional flags and NAME=VALUE assignments, and exec -a renames
+// argv[0] before executing it. "env T" keeps its own exact and prefix forms
+// because the internal-glob patterns require a space-delimited " T" token,
+// which a bare "env T" invocation does not contain. Claude Code entries use
+// the space-star glob style for internal wildcards (documented glob syntax);
+// OpenCode entries rely on wildcard.ts compiling every "*" to ".*".
+func remoteShellEnvWrapperForms(tool string) (openCode []string, claudeCode []string) {
+	openCode = []string{"env " + tool + " *", "env * " + tool + " *", "exec -a * " + tool + " *"}
+	claudeCode = []string{"Bash(env " + tool + ")", "Bash(env " + tool + ":*)", "Bash(env * " + tool + " *)", "Bash(exec -a * " + tool + " *)"}
+	return openCode, claudeCode
+}
+
 // TestInjectOpenCodeDeniesRemoteShellUtilities verifies that the remote shell
 // utilities used to reach machines outside the workspace (ssh, scp, sftp,
 // rsync) are denied in the OpenCode/Kilocode bash permission map in their
@@ -739,6 +759,8 @@ func TestInjectOpenCodeDeniesRemoteShellUtilities(t *testing.T) {
 	for _, tool := range remoteShellTools {
 		openCode, _ := remoteShellEscapeForms(tool, " *", ":*")
 		remoteDenyRules = append(remoteDenyRules, openCode...)
+		envOpenCode, _ := remoteShellEnvWrapperForms(tool)
+		remoteDenyRules = append(remoteDenyRules, envOpenCode...)
 	}
 
 	tests := []struct {
@@ -816,6 +838,8 @@ func TestInjectClaudeCodeDeniesRemoteShellUtilities(t *testing.T) {
 	for _, tool := range remoteShellTools {
 		_, claudeCode := remoteShellEscapeForms(tool, " *", ":*")
 		remoteDenyRules = append(remoteDenyRules, claudeCode...)
+		_, envClaudeCode := remoteShellEnvWrapperForms(tool)
+		remoteDenyRules = append(remoteDenyRules, envClaudeCode...)
 	}
 
 	home := t.TempDir()
