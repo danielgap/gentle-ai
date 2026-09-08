@@ -41,12 +41,17 @@ func TargetPath(homeDir string, adapter agents.Adapter) string {
 // The env(1) and exec -a wrapper entries (#4330 review follow-up) close the
 // remaining resolution bypasses: env execs the utility after optional flags
 // and NAME=VALUE assignments (env ssh, env -i ssh, env FOO=1 ssh ...), and
-// exec -a renames argv[0] before executing it. "env X" keeps its own exact
-// and ":*" prefix forms because the internal-glob "env * X *" pattern needs
-// a space-delimited " X" token. The glob entries are deliberately
-// conservative: a benign command like `env LC_ALL=C sort ssh_keys.txt` also
-// matches "env * ssh *" and is denied — a false positive toward deny is the
-// safe side of a remote-execution boundary.
+// exec -a renames argv[0] before executing it. The wrappers are enumerated
+// over the bare name and every absolute install prefix, because a wrapped
+// absolute path (env -i /usr/bin/ssh ...) is as unreachable for the
+// bare-name rules as the unwrapped absolute path. "env X" keeps its own
+// exact and ":*" prefix forms because the internal-glob "env * X *" pattern
+// needs a space-delimited " X" token followed by more arguments, which a
+// bare "env X" invocation does not contain. The glob entries are
+// deliberately conservative: a benign command like
+// `env LC_ALL=C git commit -m "fix ssh config"` also matches "env * ssh *"
+// and is denied — a false positive toward deny is the safe side of a
+// remote-execution boundary.
 var claudeCodeOverlayJSON = []byte(`{
   "permissions": {
     "defaultMode": "bypassPermissions",
@@ -89,6 +94,26 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(env ssh:*)",
       "Bash(env * ssh *)",
       "Bash(exec -a * ssh *)",
+      "Bash(env /bin/ssh)",
+      "Bash(env /bin/ssh:*)",
+      "Bash(env * /bin/ssh *)",
+      "Bash(exec -a * /bin/ssh *)",
+      "Bash(env /usr/bin/ssh)",
+      "Bash(env /usr/bin/ssh:*)",
+      "Bash(env * /usr/bin/ssh *)",
+      "Bash(exec -a * /usr/bin/ssh *)",
+      "Bash(env /usr/local/bin/ssh)",
+      "Bash(env /usr/local/bin/ssh:*)",
+      "Bash(env * /usr/local/bin/ssh *)",
+      "Bash(exec -a * /usr/local/bin/ssh *)",
+      "Bash(env /opt/homebrew/bin/ssh)",
+      "Bash(env /opt/homebrew/bin/ssh:*)",
+      "Bash(env * /opt/homebrew/bin/ssh *)",
+      "Bash(exec -a * /opt/homebrew/bin/ssh *)",
+      "Bash(env /run/current-system/sw/bin/ssh)",
+      "Bash(env /run/current-system/sw/bin/ssh:*)",
+      "Bash(env * /run/current-system/sw/bin/ssh *)",
+      "Bash(exec -a * /run/current-system/sw/bin/ssh *)",
       "Bash(scp)",
       "Bash(scp:*)",
       "Bash(/bin/scp:*)",
@@ -103,6 +128,26 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(env scp:*)",
       "Bash(env * scp *)",
       "Bash(exec -a * scp *)",
+      "Bash(env /bin/scp)",
+      "Bash(env /bin/scp:*)",
+      "Bash(env * /bin/scp *)",
+      "Bash(exec -a * /bin/scp *)",
+      "Bash(env /usr/bin/scp)",
+      "Bash(env /usr/bin/scp:*)",
+      "Bash(env * /usr/bin/scp *)",
+      "Bash(exec -a * /usr/bin/scp *)",
+      "Bash(env /usr/local/bin/scp)",
+      "Bash(env /usr/local/bin/scp:*)",
+      "Bash(env * /usr/local/bin/scp *)",
+      "Bash(exec -a * /usr/local/bin/scp *)",
+      "Bash(env /opt/homebrew/bin/scp)",
+      "Bash(env /opt/homebrew/bin/scp:*)",
+      "Bash(env * /opt/homebrew/bin/scp *)",
+      "Bash(exec -a * /opt/homebrew/bin/scp *)",
+      "Bash(env /run/current-system/sw/bin/scp)",
+      "Bash(env /run/current-system/sw/bin/scp:*)",
+      "Bash(env * /run/current-system/sw/bin/scp *)",
+      "Bash(exec -a * /run/current-system/sw/bin/scp *)",
       "Bash(sftp)",
       "Bash(sftp:*)",
       "Bash(/bin/sftp:*)",
@@ -117,6 +162,26 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(env sftp:*)",
       "Bash(env * sftp *)",
       "Bash(exec -a * sftp *)",
+      "Bash(env /bin/sftp)",
+      "Bash(env /bin/sftp:*)",
+      "Bash(env * /bin/sftp *)",
+      "Bash(exec -a * /bin/sftp *)",
+      "Bash(env /usr/bin/sftp)",
+      "Bash(env /usr/bin/sftp:*)",
+      "Bash(env * /usr/bin/sftp *)",
+      "Bash(exec -a * /usr/bin/sftp *)",
+      "Bash(env /usr/local/bin/sftp)",
+      "Bash(env /usr/local/bin/sftp:*)",
+      "Bash(env * /usr/local/bin/sftp *)",
+      "Bash(exec -a * /usr/local/bin/sftp *)",
+      "Bash(env /opt/homebrew/bin/sftp)",
+      "Bash(env /opt/homebrew/bin/sftp:*)",
+      "Bash(env * /opt/homebrew/bin/sftp *)",
+      "Bash(exec -a * /opt/homebrew/bin/sftp *)",
+      "Bash(env /run/current-system/sw/bin/sftp)",
+      "Bash(env /run/current-system/sw/bin/sftp:*)",
+      "Bash(env * /run/current-system/sw/bin/sftp *)",
+      "Bash(exec -a * /run/current-system/sw/bin/sftp *)",
       "Bash(rsync)",
       "Bash(rsync:*)",
       "Bash(/bin/rsync:*)",
@@ -130,7 +195,27 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(env rsync)",
       "Bash(env rsync:*)",
       "Bash(env * rsync *)",
-      "Bash(exec -a * rsync *)"
+      "Bash(exec -a * rsync *)",
+      "Bash(env /bin/rsync)",
+      "Bash(env /bin/rsync:*)",
+      "Bash(env * /bin/rsync *)",
+      "Bash(exec -a * /bin/rsync *)",
+      "Bash(env /usr/bin/rsync)",
+      "Bash(env /usr/bin/rsync:*)",
+      "Bash(env * /usr/bin/rsync *)",
+      "Bash(exec -a * /usr/bin/rsync *)",
+      "Bash(env /usr/local/bin/rsync)",
+      "Bash(env /usr/local/bin/rsync:*)",
+      "Bash(env * /usr/local/bin/rsync *)",
+      "Bash(exec -a * /usr/local/bin/rsync *)",
+      "Bash(env /opt/homebrew/bin/rsync)",
+      "Bash(env /opt/homebrew/bin/rsync:*)",
+      "Bash(env * /opt/homebrew/bin/rsync *)",
+      "Bash(exec -a * /opt/homebrew/bin/rsync *)",
+      "Bash(env /run/current-system/sw/bin/rsync)",
+      "Bash(env /run/current-system/sw/bin/rsync:*)",
+      "Bash(env * /run/current-system/sw/bin/rsync *)",
+      "Bash(exec -a * /run/current-system/sw/bin/rsync *)"
     ]
   }
 }
@@ -150,14 +235,17 @@ var claudeCodeOverlayJSON = []byte(`{
 // The env(1) and exec -a wrapper entries (#4330 review follow-up) close the
 // remaining resolution bypasses: env execs the utility after optional flags
 // and NAME=VALUE assignments (env ssh, env -i ssh, env FOO=1 ssh ...), and
-// exec -a renames argv[0] before executing it. wildcard.ts compiles every
-// "*" to ".*" (only the trailing " *" becomes an optional group), so
+// exec -a renames argv[0] before executing it. The wrappers are enumerated
+// over the bare name and every absolute install prefix, because a wrapped
+// absolute path (env -i /usr/bin/ssh ...) is as unreachable for the
+// bare-name rules as the unwrapped absolute path. wildcard.ts compiles
+// every "*" to ".*" (only the trailing " *" becomes an optional group), so
 // "env * X *" matches "env -i X ..." and "env NAME=VALUE X ..." while
 // "env X *" covers the flag-free form including the bare invocation. The
 // glob entries are deliberately conservative: a benign command like
-// `env LC_ALL=C sort ssh_keys.txt` also matches "env * ssh *" and is denied
-// — a false positive toward deny is the safe side of a remote-execution
-// boundary.
+// `env LC_ALL=C git commit -m "fix ssh config"` also matches "env * ssh *"
+// and is denied — a false positive toward deny is the safe side of a
+// remote-execution boundary.
 var openCodeOverlayJSON = []byte(`{
   "permission": {
     "bash": {
@@ -181,6 +269,21 @@ var openCodeOverlayJSON = []byte(`{
       "env ssh *": "deny",
       "env * ssh *": "deny",
       "exec -a * ssh *": "deny",
+      "env /bin/ssh *": "deny",
+      "env * /bin/ssh *": "deny",
+      "exec -a * /bin/ssh *": "deny",
+      "env /usr/bin/ssh *": "deny",
+      "env * /usr/bin/ssh *": "deny",
+      "exec -a * /usr/bin/ssh *": "deny",
+      "env /usr/local/bin/ssh *": "deny",
+      "env * /usr/local/bin/ssh *": "deny",
+      "exec -a * /usr/local/bin/ssh *": "deny",
+      "env /opt/homebrew/bin/ssh *": "deny",
+      "env * /opt/homebrew/bin/ssh *": "deny",
+      "exec -a * /opt/homebrew/bin/ssh *": "deny",
+      "env /run/current-system/sw/bin/ssh *": "deny",
+      "env * /run/current-system/sw/bin/ssh *": "deny",
+      "exec -a * /run/current-system/sw/bin/ssh *": "deny",
       "scp": "deny",
       "scp *": "deny",
       "/bin/scp *": "deny",
@@ -194,6 +297,21 @@ var openCodeOverlayJSON = []byte(`{
       "env scp *": "deny",
       "env * scp *": "deny",
       "exec -a * scp *": "deny",
+      "env /bin/scp *": "deny",
+      "env * /bin/scp *": "deny",
+      "exec -a * /bin/scp *": "deny",
+      "env /usr/bin/scp *": "deny",
+      "env * /usr/bin/scp *": "deny",
+      "exec -a * /usr/bin/scp *": "deny",
+      "env /usr/local/bin/scp *": "deny",
+      "env * /usr/local/bin/scp *": "deny",
+      "exec -a * /usr/local/bin/scp *": "deny",
+      "env /opt/homebrew/bin/scp *": "deny",
+      "env * /opt/homebrew/bin/scp *": "deny",
+      "exec -a * /opt/homebrew/bin/scp *": "deny",
+      "env /run/current-system/sw/bin/scp *": "deny",
+      "env * /run/current-system/sw/bin/scp *": "deny",
+      "exec -a * /run/current-system/sw/bin/scp *": "deny",
       "sftp": "deny",
       "sftp *": "deny",
       "/bin/sftp *": "deny",
@@ -207,6 +325,21 @@ var openCodeOverlayJSON = []byte(`{
       "env sftp *": "deny",
       "env * sftp *": "deny",
       "exec -a * sftp *": "deny",
+      "env /bin/sftp *": "deny",
+      "env * /bin/sftp *": "deny",
+      "exec -a * /bin/sftp *": "deny",
+      "env /usr/bin/sftp *": "deny",
+      "env * /usr/bin/sftp *": "deny",
+      "exec -a * /usr/bin/sftp *": "deny",
+      "env /usr/local/bin/sftp *": "deny",
+      "env * /usr/local/bin/sftp *": "deny",
+      "exec -a * /usr/local/bin/sftp *": "deny",
+      "env /opt/homebrew/bin/sftp *": "deny",
+      "env * /opt/homebrew/bin/sftp *": "deny",
+      "exec -a * /opt/homebrew/bin/sftp *": "deny",
+      "env /run/current-system/sw/bin/sftp *": "deny",
+      "env * /run/current-system/sw/bin/sftp *": "deny",
+      "exec -a * /run/current-system/sw/bin/sftp *": "deny",
       "rsync": "deny",
       "rsync *": "deny",
       "/bin/rsync *": "deny",
@@ -219,7 +352,22 @@ var openCodeOverlayJSON = []byte(`{
       "exec rsync *": "deny",
       "env rsync *": "deny",
       "env * rsync *": "deny",
-      "exec -a * rsync *": "deny"
+      "exec -a * rsync *": "deny",
+      "env /bin/rsync *": "deny",
+      "env * /bin/rsync *": "deny",
+      "exec -a * /bin/rsync *": "deny",
+      "env /usr/bin/rsync *": "deny",
+      "env * /usr/bin/rsync *": "deny",
+      "exec -a * /usr/bin/rsync *": "deny",
+      "env /usr/local/bin/rsync *": "deny",
+      "env * /usr/local/bin/rsync *": "deny",
+      "exec -a * /usr/local/bin/rsync *": "deny",
+      "env /opt/homebrew/bin/rsync *": "deny",
+      "env * /opt/homebrew/bin/rsync *": "deny",
+      "exec -a * /opt/homebrew/bin/rsync *": "deny",
+      "env /run/current-system/sw/bin/rsync *": "deny",
+      "env * /run/current-system/sw/bin/rsync *": "deny",
+      "exec -a * /run/current-system/sw/bin/rsync *": "deny"
     },
     "read": {
       "*": "allow",

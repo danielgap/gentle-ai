@@ -62,6 +62,36 @@ func remoteAction(t *testing.T, raw []byte, command string) string {
 	return action
 }
 
+// claudeDenyMatches reports whether a single Claude Code Bash deny rule
+// matches a command under the documented rule semantics (the mirror of
+// remoteAction for the Claude overlay): "Bash(cmd)" is an exact match,
+// "Bash(cmd:*)" matches any command with that literal prefix, and a rule with
+// internal "*" wildcards is an anchored glob where "*" matches any characters
+// — so "Bash(env * ssh *)" needs a space-delimited " ssh " token with more
+// arguments after it and does not match the bare "env ssh" invocation.
+func claudeDenyMatches(rule, command string) bool {
+	inner := strings.TrimSuffix(strings.TrimPrefix(rule, "Bash("), ")")
+	if prefix, ok := strings.CutSuffix(inner, ":*"); ok && !strings.Contains(prefix, "*") {
+		return strings.HasPrefix(command, prefix)
+	}
+	if !strings.Contains(inner, "*") {
+		return command == inner
+	}
+	pattern := strings.ReplaceAll(regexp.QuoteMeta(inner), `\*`, ".*")
+	return regexp.MustCompile("(?s)^" + pattern + "$").MatchString(command)
+}
+
+// claudeDenyMatchesAny reports whether any deny entry in the injected
+// settings matches the command under claudeDenyMatches semantics.
+func claudeDenyMatchesAny(denyList []any, command string) bool {
+	for _, entry := range denyList {
+		if rule, ok := entry.(string); ok && claudeDenyMatches(rule, command) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRemoteMatcherBoundaryFixtures(t *testing.T) {
 	// #4324 deny policy: absolute-path, backslash-escape, and shell resolution
 	// wrapper invocations of the remote shell utilities are denied by the
@@ -71,8 +101,9 @@ func TestRemoteMatcherBoundaryFixtures(t *testing.T) {
 	// env(1) and exec -a forms join the boundary after the #4330 review: env
 	// execs the utility as one parsed command node, so the full node text
 	// ("env -i ssh ...", "env NAME=VALUE ssh ...", "exec -a alias ssh ...")
-	// reaches the matcher and must be denied there.
-	for _, input := range []string{"/usr/bin/ssh example.invalid", "/bin/scp file example.invalid:file", "\\ssh example.invalid", "command ssh example.invalid", "exec rsync -a src dst", "env ssh example.invalid", "env -i scp file example.invalid:file", "env CUSTOM=1 sftp example.invalid", "exec -a benign rsync -a src dst"} {
+	// reaches the matcher and must be denied there — including the same
+	// wrappers around absolute install paths (env -i /usr/bin/ssh ...).
+	for _, input := range []string{"/usr/bin/ssh example.invalid", "/bin/scp file example.invalid:file", "\\ssh example.invalid", "command ssh example.invalid", "exec rsync -a src dst", "env ssh example.invalid", "env -i scp file example.invalid:file", "env CUSTOM=1 sftp example.invalid", "exec -a benign rsync -a src dst", "env /usr/bin/ssh example.invalid", "env -i /usr/bin/ssh example.invalid", "env CUSTOM=1 /usr/bin/ssh example.invalid", "exec -a alias /usr/bin/ssh example.invalid", "env /opt/homebrew/bin/rsync -a src dst"} {
 		if got := remoteAction(t, openCodeOverlayJSON, input); got != "deny" {
 			t.Errorf("bypass invocation %q not denied: %s", input, got)
 		}
@@ -260,6 +291,63 @@ func TestInjectOpenCodeIsIdempotent(t *testing.T) {
 	}
 	if !strings.Contains(text, `"read"`) {
 		t.Fatal("opencode.json permission missing read section")
+	}
+}
+
+// TestInjectClaudeCodeIsIdempotent pins the #4330 review regression: a second
+// Inject over already-injected Claude Code settings must report Changed ==
+// false, and every deny rule from the overlay must appear exactly once — the
+// arrays-replace merge must not append a second copy of the deny list.
+func TestInjectClaudeCodeIsIdempotent(t *testing.T) {
+	home := t.TempDir()
+
+	first, err := Inject(home, claudeAdapter())
+	if err != nil {
+		t.Fatalf("Inject() first error = %v", err)
+	}
+	if !first.Changed {
+		t.Fatal("Inject() first changed = false, want true")
+	}
+
+	second, err := Inject(home, claudeAdapter())
+	if err != nil {
+		t.Fatalf("Inject() second error = %v", err)
+	}
+	if second.Changed {
+		t.Fatal("Inject() second changed = true, want false")
+	}
+
+	content, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatalf("read settings file: %v", err)
+	}
+
+	type denySettings struct {
+		Permissions struct {
+			Deny []string `json:"deny"`
+		} `json:"permissions"`
+	}
+	var settings denySettings
+	if err := json.Unmarshal(content, &settings); err != nil {
+		t.Fatalf("unmarshal settings json: %v", err)
+	}
+	var overlay denySettings
+	if err := json.Unmarshal(claudeCodeOverlayJSON, &overlay); err != nil {
+		t.Fatalf("unmarshal overlay json: %v", err)
+	}
+
+	counts := make(map[string]int, len(settings.Permissions.Deny))
+	for _, rule := range settings.Permissions.Deny {
+		counts[rule]++
+	}
+	if len(settings.Permissions.Deny) != len(overlay.Permissions.Deny) {
+		t.Errorf("deny list length = %d, want %d (one entry per overlay rule, no duplicates)",
+			len(settings.Permissions.Deny), len(overlay.Permissions.Deny))
+	}
+	for _, rule := range overlay.Permissions.Deny {
+		if counts[rule] != 1 {
+			t.Errorf("deny rule %q appears %d times, want exactly 1", rule, counts[rule])
+		}
 	}
 }
 
@@ -728,14 +816,23 @@ func remoteShellEscapeForms(tool, openCodeSuffix, claudeCodeSuffix string) (open
 // remoteShellEnvWrapperForms returns the env(1) and exec -a wrapper deny
 // surfaces one tool needs (#4330 review follow-up): env execs the utility
 // after optional flags and NAME=VALUE assignments, and exec -a renames
-// argv[0] before executing it. "env T" keeps its own exact and prefix forms
+// argv[0] before executing it. The wrappers are enumerated over the bare
+// name and every absolute install prefix, because a wrapped absolute path
+// (env -i /usr/bin/ssh ...) is as unreachable for the bare-name rules as the
+// unwrapped absolute path. "env T" keeps its own exact and prefix forms
 // because the internal-glob patterns require a space-delimited " T" token,
 // which a bare "env T" invocation does not contain. Claude Code entries use
 // the space-star glob style for internal wildcards (documented glob syntax);
 // OpenCode entries rely on wildcard.ts compiling every "*" to ".*".
 func remoteShellEnvWrapperForms(tool string) (openCode []string, claudeCode []string) {
-	openCode = []string{"env " + tool + " *", "env * " + tool + " *", "exec -a * " + tool + " *"}
-	claudeCode = []string{"Bash(env " + tool + ")", "Bash(env " + tool + ":*)", "Bash(env * " + tool + " *)", "Bash(exec -a * " + tool + " *)"}
+	commands := []string{tool}
+	for _, prefix := range remoteShellPathPrefixes {
+		commands = append(commands, prefix+tool)
+	}
+	for _, command := range commands {
+		openCode = append(openCode, "env "+command+" *", "env * "+command+" *", "exec -a * "+command+" *")
+		claudeCode = append(claudeCode, "Bash(env "+command+")", "Bash(env "+command+":*)", "Bash(env * "+command+" *)", "Bash(exec -a * "+command+" *)")
+	}
 	return openCode, claudeCode
 }
 
@@ -895,6 +992,36 @@ func TestInjectClaudeCodeDeniesRemoteShellUtilities(t *testing.T) {
 		if !denySet[rule] {
 			t.Errorf("remote shell deny rule %q was not present; got: %v", rule, denyList)
 		}
+	}
+
+	// #4330 review follow-up: membership in the serialized deny list does not
+	// prove the wrapper globs intercept anything. claudeDenyMatches ports the
+	// documented rule semantics, so representative wrapper invocations —
+	// including wrapped absolute install paths — must actually match a deny
+	// rule. The bare "env ssh" form must NOT match the glob (no space-delimited
+	// " ssh " token with trailing arguments), which is exactly why the exact
+	// and ":*" prefix entries exist, and a benign command whose "ssh" only
+	// appears inside a longer token must stay unmatched.
+	for _, command := range []string{
+		"env -i ssh user@example.invalid",
+		"env FOO=1 ssh user@example.invalid",
+		"exec -a alias ssh user@example.invalid",
+		"env /usr/bin/ssh user@example.invalid",
+		"env -i /usr/bin/ssh user@example.invalid",
+		"exec -a alias /usr/bin/ssh user@example.invalid",
+	} {
+		if !claudeDenyMatchesAny(denyList, command) {
+			t.Errorf("wrapper invocation %q matched no deny rule; got: %v", command, denyList)
+		}
+	}
+	if claudeDenyMatches("Bash(env * ssh *)", "env ssh") {
+		t.Errorf(`glob %q matched bare "env ssh"; it needs a space-delimited " ssh " token`, "Bash(env * ssh *)")
+	}
+	if !claudeDenyMatchesAny(denyList, "env ssh") {
+		t.Error(`bare "env ssh" matched no deny rule; the exact and ":*" prefix entries are required`)
+	}
+	if claudeDenyMatchesAny(denyList, "env FOO=1 sort ssh_keys.txt") {
+		t.Error(`benign command "env FOO=1 sort ssh_keys.txt" unexpectedly matched a deny rule`)
 	}
 
 	// The overlay wins for defaultMode because arrays replace but maps deep-merge.
