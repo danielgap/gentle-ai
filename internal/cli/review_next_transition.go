@@ -196,6 +196,11 @@ type ReviewTransitionArtifact struct {
 func newReviewNextTransition(status ReviewTargetStatusResult, selectedLenses []string, artifacts []ReviewTransitionArtifact, artifactErr error, input reviewNextTransitionInput) ReviewNextTransition {
 	if status.Applicability != reviewtransaction.TargetApplicabilityCurrent {
 		switch status.Applicability {
+		case reviewtransaction.TargetApplicabilityAcknowledged:
+			// #4405: an acknowledged terminal receipt is the reasoned terminal
+			// state — no lifecycle continuation exists for a burned approval,
+			// and reoffering START burned duplicate review runs in the field.
+			return reviewStopTransition("acknowledged_terminal")
 		case reviewtransaction.TargetApplicabilityUnrelated:
 			if input.RDDModeResolved && !input.RDDMode.Enabled() {
 				return reviewStopTransition("rdd_disabled")

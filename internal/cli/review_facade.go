@@ -1089,6 +1089,19 @@ func runReviewStatus(ctx context.Context, args []string, stdout io.Writer) error
 				if err != nil {
 					return fmt.Errorf("assess negotiated review target: %w", err)
 				}
+			} else if receipt, found, err := reviewtransaction.ResolveLatestTerminalReviewReceipt(ctx, root, liveSnapshot.Identity); err != nil {
+				return fmt.Errorf("resolve terminal review receipt for negotiated review target: %w", err)
+			} else if found {
+				// #4405: a terminal receipt proves this frozen target was already
+				// reviewed, approved, and acknowledged. The core classifier owns
+				// the acknowledged terminal state; the fresh shortcut below must
+				// not reoffer a START that burns a duplicate review run.
+				native, liveSnapshot, err = reviewtransaction.AssessTargetStatusWithSnapshot(ctx, root, reviewtransaction.TargetStatusRequest{
+					Target: target, LineageID: receipt.LineageID, PrePR: prePR,
+				})
+				if err != nil {
+					return fmt.Errorf("assess acknowledged terminal review target: %w", err)
+				}
 			} else {
 				native = reviewFreshAtomicTargetStatus(target, liveSnapshot)
 				// Issue #4412: a selectorless STATUS that classifies this empty
@@ -1128,6 +1141,17 @@ func runReviewStatus(ctx context.Context, args []string, stdout io.Writer) error
 		result := newReviewTargetStatusResultForContract(native, *contract)
 		result.intendedUntracked = intendedScope
 		result.derivedCommittedRange = derivedCommittedRange
+		// #4405: when the derived committed range carries a terminal receipt,
+		// it is not a secondary classification — it is the truthful answer for
+		// this repository. The promoted result exposes the acknowledged
+		// terminal state (receipt included) instead of an unrelated empty
+		// workspace candidate whose only continuation would be a duplicate
+		// START for a target an earlier review already covered.
+		if derivedCommittedRange != nil && derivedCommittedRange.Applicability == reviewtransaction.TargetApplicabilityAcknowledged {
+			result = *derivedCommittedRange
+			result.intendedUntracked = intendedScope
+			result.derivedCommittedRange = nil
+		}
 		// Issue #4040: publish the digest once, here, before every path that
 		// could suppress it — the compact-reviewing replacement immediately
 		// below (which deliberately zeros Digest for the #1972 fail-closed
@@ -1533,6 +1557,22 @@ func reviewDerivedCommittedRangeStatus(ctx context.Context, root string, builder
 		// A non-empty commit range whose trees still coincide (an empty commit)
 		// has no candidate to review, so the collect fallback stays truthful.
 		return nil
+	}
+	// #4405: the derived committed range may be exactly the target an earlier
+	// review already approved and acknowledged. A terminal receipt resolves
+	// through the core classifier as the acknowledged terminal state; only a
+	// range nothing governs keeps the fresh START below. Any uncertainty
+	// (resolution error, assessment error) falls back to today's shape.
+	if receipt, found, receiptErr := reviewtransaction.ResolveLatestTerminalReviewReceipt(ctx, root, snapshot.Identity); receiptErr == nil && found {
+		if native, _, assessErr := reviewtransaction.AssessTargetStatusWithSnapshot(ctx, root, reviewtransaction.TargetStatusRequest{
+			Target: derivedTarget, LineageID: receipt.LineageID,
+		}); assessErr == nil && native.Applicability == reviewtransaction.TargetApplicabilityAcknowledged {
+			result := newReviewTargetStatusResultForContract(native, contract)
+			result.repositoryRoot = root
+			result.intendedUntracked = intended
+			result.committedRangeBaseRef = base
+			return &result
+		}
 	}
 	native := reviewFreshAtomicTargetStatus(derivedTarget, snapshot)
 	if native.Action != reviewtransaction.TargetStatusActionStart {

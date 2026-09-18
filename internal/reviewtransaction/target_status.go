@@ -17,12 +17,21 @@ const (
 	TargetApplicabilityUnrelated TargetApplicability = "unrelated"
 	TargetApplicabilityAmbiguous TargetApplicability = "ambiguous"
 	TargetApplicabilityCorrupted TargetApplicability = "corrupted"
+	// TargetApplicabilityAcknowledged marks a live target whose exact frozen
+	// identity carries a terminal review receipt (#4405): the candidate was
+	// reviewed, approved, and acknowledged, and the authority burned. It is a
+	// reasoned terminal classification, never an invitation to re-review.
+	TargetApplicabilityAcknowledged TargetApplicability = "acknowledged"
 )
 
 type TargetStatusAction string
 
 const (
-	TargetStatusActionStart           TargetStatusAction = "start"
+	TargetStatusActionStart TargetStatusAction = "start"
+	// TargetStatusActionNone reports that no lifecycle action applies: the
+	// target is terminally acknowledged and there is nothing to start,
+	// replay, or recover (#4405).
+	TargetStatusActionNone            TargetStatusAction = "none"
 	TargetStatusActionValidate        TargetStatusAction = "validate"
 	TargetStatusActionRecover         TargetStatusAction = "recover"
 	TargetStatusActionMaintainer      TargetStatusAction = "maintainer_action"
@@ -80,15 +89,19 @@ type TargetStatusDecision struct {
 }
 
 type TargetStatusResult struct {
-	Applicability                      TargetApplicability        `json:"applicability"`
-	AuthorityVersion                   AuthorityVersion           `json:"authority_version,omitempty"`
-	LineageID                          string                     `json:"lineage_id,omitempty"`
-	State                              State                      `json:"state,omitempty"`
-	Generation                         int                        `json:"generation,omitempty"`
-	Revision                           string                     `json:"revision,omitempty"`
-	Action                             TargetStatusAction         `json:"action"`
-	ActionDisposition                  RecoveryDisposition        `json:"action_disposition,omitempty"`
-	Replayability                      Replayability              `json:"replayability"`
+	Applicability     TargetApplicability `json:"applicability"`
+	AuthorityVersion  AuthorityVersion    `json:"authority_version,omitempty"`
+	LineageID         string              `json:"lineage_id,omitempty"`
+	State             State               `json:"state,omitempty"`
+	Generation        int                 `json:"generation,omitempty"`
+	Revision          string              `json:"revision,omitempty"`
+	Action            TargetStatusAction  `json:"action"`
+	ActionDisposition RecoveryDisposition `json:"action_disposition,omitempty"`
+	Replayability     Replayability       `json:"replayability"`
+	// TerminalReceipt is set exactly when Applicability is acknowledged: the
+	// immutable record of the approved review whose acknowledgement burned
+	// the authority for this exact frozen target (#4405).
+	TerminalReceipt                    *TerminalReviewReceipt     `json:"terminal_receipt,omitempty"`
 	OriginalChangedLines               int                        `json:"original_changed_lines,omitempty"`
 	Tier                               RiskLevel                  `json:"tier,omitempty"`
 	CorrectionBudget                   int                        `json:"correction_budget,omitempty"`
@@ -376,6 +389,36 @@ func selectorlessCommittedBaseDiffCorrections(ctx context.Context, repo string) 
 	return candidates, nil
 }
 
+// acknowledgedTerminalStatus resolves the exact frozen target against the
+// terminal receipt store (#4405). A receipt proves this candidate was
+// reviewed, approved, and acknowledged: the burned authority must not be
+// reclassified as a fresh unreviewed target. An explicit lineage selector
+// only matches its own receipt; a selectorless query takes the latest.
+func acknowledgedTerminalStatus(ctx context.Context, repo string, base TargetStatusResult, request TargetStatusRequest) (TargetStatusResult, bool, error) {
+	root, _, err := reviewAuthorityRoot(ctx, repo)
+	if err != nil {
+		return base, false, err
+	}
+	receipts, err := ResolveTerminalReviewReceiptsByTargetIdentity(root, base.TargetIdentity)
+	if err != nil {
+		return base, false, err
+	}
+	var receipt *TerminalReviewReceipt
+	for index := len(receipts) - 1; index >= 0; index-- {
+		if request.LineageID == "" || receipts[index].LineageID == request.LineageID {
+			receipt = &receipts[index]
+			break
+		}
+	}
+	if receipt == nil {
+		return base, false, nil
+	}
+	base.Applicability = TargetApplicabilityAcknowledged
+	base.Action, base.Replayability = TargetStatusActionNone, ReplayabilityNotReplayable
+	base.TerminalReceipt = receipt
+	return base, true, nil
+}
+
 func assessTargetStatusSnapshot(ctx context.Context, repo string, request TargetStatusRequest, live Snapshot) (TargetStatusResult, error) {
 	base := TargetStatusResult{
 		TargetIdentity:      live.Identity,
@@ -541,6 +584,14 @@ func assessTargetStatusSnapshot(ctx context.Context, repo string, request Target
 		// listed in CandidateLineageIDs purely so recovering one of them
 		// remains a discoverable OPTION, never a required disambiguation
 		// chore forced by history alone.
+		// #4405: before this target is called unrelated, its exact frozen
+		// identity is checked against terminal review receipts: an
+		// acknowledged approval is terminal truth, not a fresh target.
+		if result, acknowledged, err := acknowledgedTerminalStatus(ctx, repo, base, request); err != nil {
+			return targetStatusFailure(base, err)
+		} else if acknowledged {
+			return result, nil
+		}
 		base.Applicability = TargetApplicabilityUnrelated
 		base.Action, base.Replayability = TargetStatusActionStart, ReplayabilityNotReplayable
 		if live.Kind == TargetBaseWorkspaceOverlay && live.Projection == ProjectionStaged {
@@ -555,6 +606,13 @@ func assessTargetStatusSnapshot(ctx context.Context, repo string, request Target
 	}
 	switch len(candidates) {
 	case 0:
+		// #4405: same receipt check as the stale-history branch above — the
+		// burned authority may not re-enter as a fresh unreviewed target.
+		if result, acknowledged, err := acknowledgedTerminalStatus(ctx, repo, base, request); err != nil {
+			return targetStatusFailure(base, err)
+		} else if acknowledged {
+			return result, nil
+		}
 		base.Applicability = TargetApplicabilityUnrelated
 		base.Action, base.Replayability = TargetStatusActionStart, ReplayabilityNotReplayable
 		if live.Kind == TargetBaseWorkspaceOverlay && live.Projection == ProjectionStaged {

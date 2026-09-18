@@ -74,6 +74,7 @@ A `stop` ends its transition, never approves delivery. Complete atomic inventory
 | Reason codes | Continuation |
 | --- | --- |
 | `captured_artifacts_unverifiable` | Terminal — maintainer inspects B authority, or `D`. |
+| `acknowledged_terminal` | Terminal — the exact frozen target was already reviewed, approved, and acknowledged; deliver under ordinary repository policy, or `D`. A changed candidate gets a fresh `review.start`. |
 | `captured_result_selection_unavailable` | Terminal — maintainer inspects lineage, or `D`. |
 | `missing_authority_binding` | Terminal — file a bounded defect with lineage, or `D`. |
 | `corrupted_or_unverifiable_authority`, `manual_intervention_required`, `native_stop_required` | Terminal — maintainer inspects authority/lineage, or `D`. |

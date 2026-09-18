@@ -81,8 +81,11 @@ type ReviewTargetStatusResult struct {
 	// have included; it lives outside Projection (a record of the frozen
 	// candidate) because ReviewTargetStatusProjection serializes through the
 	// shared, multi-version projection.schema.json.
-	EligibleUntrackedInventory string                                      `json:"eligible_untracked_inventory,omitempty"`
-	Repair                     reviewtransaction.AuthorityRepairAssessment `json:"repair"`
+	EligibleUntrackedInventory string `json:"eligible_untracked_inventory,omitempty"`
+	// TerminalReceipt mirrors the native acknowledged terminal receipt
+	// (#4405): present exactly when applicability is "acknowledged".
+	TerminalReceipt *reviewtransaction.TerminalReviewReceipt    `json:"terminal_receipt,omitempty"`
+	Repair          reviewtransaction.AuthorityRepairAssessment `json:"repair"`
 	// Disposition is Wave 6's negotiated-route provider preview (rdd-closure-
 	// disposition-execution / "Reachable Through the Negotiated Transition
 	// Route"): populated only when Repair is not eligible but a closed
@@ -214,9 +217,11 @@ type ReviewTargetStatusProjection struct {
 }
 
 func newReviewTargetStatusResultForContract(native reviewtransaction.TargetStatusResult, contract string) ReviewTargetStatusResult {
-	// Historical terminal states are authority observations only. Public STATUS
-	// never offers a replay, evidence submission, or delivery gate for them;
-	// new lineages burn during their final causal capture event.
+	// Historical terminal states stay authority observations; the one
+	// exception is the acknowledged terminal receipt (#4405): STATUS surfaces
+	// it as a reasoned terminal state so an acknowledged approval is never
+	// reoffered as a fresh unreviewed target. New lineages still burn during
+	// their final causal capture event.
 	switch native.Action {
 	}
 	schema := ReviewIntegrationStatusSchema
@@ -239,6 +244,7 @@ func newReviewTargetStatusResultForContract(native reviewtransaction.TargetStatu
 			IntendedUntrackedProof:  native.Projection.IntendedUntrackedProof,
 			InitialSnapshotIdentity: native.Projection.InitialSnapshotIdentity, CurrentSnapshotIdentity: native.Projection.CurrentSnapshotIdentity,
 		},
+		TerminalReceipt: native.TerminalReceipt,
 	}
 	if native.AuthorityVersion == reviewtransaction.AuthorityVersionCompact &&
 		native.AuthorityTargetIdentity != "" && native.AuthorityTargetIdentity != native.TargetIdentity {
@@ -498,6 +504,17 @@ func (result ReviewTargetStatusResult) validateWithCompactAuthority(authority *r
 	case reviewtransaction.TargetApplicabilityCorrupted:
 		if result.Authority != nil || result.Frozen != nil || result.AuthorityTargetIdentity != "" || result.Action != reviewtransaction.TargetStatusActionRepairAuthority {
 			return errors.New("corrupted target status is inconsistent")
+		}
+	case reviewtransaction.TargetApplicabilityAcknowledged:
+		// #4405: the acknowledged terminal state is receipt-backed and exactly
+		// that. No authority, no frozen inputs, no candidates, no action to
+		// take: the receipt itself is the reasoned terminal answer.
+		if result.Authority != nil || result.Frozen != nil || result.AuthorityTargetIdentity != "" || len(result.Candidates) != 0 ||
+			result.Action != reviewtransaction.TargetStatusActionNone || result.Replayability != reviewtransaction.ReplayabilityNotReplayable {
+			return errors.New("acknowledged terminal status is inconsistent") // refusal:by-design world-action: an inconsistent acknowledged status requires a code fix
+		}
+		if result.TerminalReceipt == nil || result.TerminalReceipt.TargetIdentity != result.TargetIdentity || result.TerminalReceipt.LineageID == "" {
+			return errors.New("acknowledged terminal status requires its exact terminal receipt") // refusal:by-design world-action: the classifier produces the terminal receipt, so its absence requires a code fix
 		}
 	default:
 		return errors.New("unsupported target applicability")

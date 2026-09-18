@@ -37,8 +37,8 @@ func TestReviewProviderArtifactV1ContractsArePinned(t *testing.T) {
 		// Frozen v1 START artifacts do not project the v3 replay or retired
 		// stale-burn fields.
 		"schemas/start-v2.schema.json":             "ec8550cd93bbe84af1ce87dfd7abfa9e24692f42b20f8f0bf9cac1d4b88ea46c",
-		"schemas/status.schema.json":               "86d0a5ff09a833ff723804c3e31185a80826cbd81a73cf61026feea8c5df2314",
-		"schemas/status-v2.schema.json":            "7c51627d133592839ba4afa860b358b68109afd5f70ee998cd421f563201b23e",
+		"schemas/status.schema.json":               "66869af2d1d6cd948e090cc125af75949d16a37bef327641d30c1fbc04e11aa6",
+		"schemas/status-v2.schema.json":            "d1485702a44b65869e30d5b70d0659f2e4d94a4afbe892d4358d131999999d1d",
 		"schemas/transition-execution.schema.json": "ddee03bd0c1b6e70f21c399bae7fe528aa4ad46cebb5a48ec72b6e6b3694aa2d",
 	}
 	for name, expected := range want {
@@ -253,7 +253,7 @@ func TestReviewProviderArtifactStatusV7ContractsArePinned(t *testing.T) {
 		//
 		// issue #4226: status/v7 documents the CompactEscalationEvidence contract
 		// on terminal escalation. Deliberate, not drift.
-		"schemas/status-v7.schema.json":         "277abd6aed05ff7358fc32374bf524c9c3d10d3760d42c68c4e8a235e2f86968",
+		"schemas/status-v7.schema.json":         "0dd49b04bd135729c278167b791c1207a4758df21803135941f9750b0e06a98d",
 		"schemas/capabilities-v2.5.schema.json": "9fcdb1717a54bcd4f73d4dee1283d9ec2f27cccbb5d54804ee8b40a6ed2db553",
 	}
 	for name, expected := range want {

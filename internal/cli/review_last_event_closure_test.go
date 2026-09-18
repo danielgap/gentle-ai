@@ -1104,10 +1104,18 @@ func TestNegotiatedStatusReplaysPendingAcknowledgementWithoutLineageSelector(t *
 	assertAcknowledgedEnvelope(t, acknowledged.Bytes(), started.LineageID, pending.TargetIdentity, pending.ExpectedRevision)
 
 	after := runSelectorlessNegotiatedStatus(t, repo)
-	if after.NextTransition == nil || after.NextTransition.Kind != reviewNextTransitionExecute ||
-		after.NextTransition.ReasonCode != "fresh_target_ready" || after.NextTransition.Execute == nil ||
-		after.NextTransition.Execute.Operation != "review.start" {
-		t.Fatalf("selectorless STATUS after the burn = %#v, want fresh_target_ready START", after.NextTransition)
+	// #4405: the burned approval is terminal truth, not a fresh target. The
+	// acknowledged receipt must surface as a reasoned terminal state instead
+	// of reoffering a START the caller would execute as a duplicate run.
+	if after.Applicability != reviewtransaction.TargetApplicabilityAcknowledged ||
+		after.Action != reviewtransaction.TargetStatusActionNone ||
+		after.TerminalReceipt == nil || after.TerminalReceipt.LineageID != started.LineageID ||
+		after.TerminalReceipt.TargetIdentity != pending.TargetIdentity {
+		t.Fatalf("selectorless STATUS after the burn = %#v, want acknowledged terminal receipt", after)
+	}
+	if after.NextTransition == nil || after.NextTransition.Kind != reviewNextTransitionStop ||
+		after.NextTransition.ReasonCode != "acknowledged_terminal" {
+		t.Fatalf("selectorless STATUS next transition after the burn = %#v, want stop/acknowledged_terminal", after.NextTransition)
 	}
 }
 
@@ -1127,6 +1135,26 @@ func TestNegotiatedStatusKeepsFreshStartForApprovedRecordOfDifferentTarget(t *te
 	if record, err := store.Load(); err != nil || record.State.State != reviewtransaction.StateApproved {
 		t.Fatalf("approved authority for the earlier target was mutated: %#v, %v", record, err)
 	}
+}
+
+// #4405: a terminal receipt must only speak for its own frozen target. After
+// an acknowledged burn, a CHANGED candidate still gets the fresh START it
+// deserves; the acknowledged classification never leaks onto new work.
+func TestNegotiatedStatusAfterAcknowledgedBurnKeepsFreshStartForChangedTarget(t *testing.T) {
+	repo, started, _, pending := startZeroLensPendingAcknowledgement(t)
+	if err := reviewtransaction.AcknowledgeApprovedCompactAuthority(context.Background(), repo, pending.LineageID, pending.TargetIdentity, pending.ExpectedRevision, pending.Token); err != nil {
+		t.Fatal(err)
+	}
+	writeReviewStartCandidate(t, repo, "docs/ordinary-guide.md", "a different documentation candidate after the acknowledged burn\n", 0o644)
+
+	status := runSelectorlessNegotiatedStatus(t, repo)
+	if status.Applicability != reviewtransaction.TargetApplicabilityUnrelated ||
+		status.TerminalReceipt != nil || status.NextTransition == nil ||
+		status.NextTransition.ReasonCode != "fresh_target_ready" || status.NextTransition.Execute == nil ||
+		status.NextTransition.Execute.Operation != "review.start" {
+		t.Fatalf("selectorless STATUS after acknowledged burn of a changed target = applicability=%q receipt=%#v transition=%#v, want fresh START without a receipt", status.Applicability, status.TerminalReceipt, status.NextTransition)
+	}
+	_ = started
 }
 
 // TestNegotiatedStatusAfterInBudgetCorrectionExposesValidationWithoutHostRuntime

@@ -20,7 +20,7 @@
     "schema": { "const": "gentle-ai.review-integration.status/v1" },
     "contract": { "const": "gentle-ai.review-integration/v1" },
     "operation": { "const": "review.status" },
-    "applicability": { "enum": ["current_target", "unrelated", "ambiguous", "corrupted"] },
+    "applicability": { "enum": ["current_target", "unrelated", "acknowledged", "ambiguous", "corrupted"] },
     "authority": {
       "type": "object",
       "additionalProperties": false,

@@ -58,6 +58,11 @@ var reviewStopInvariantClassification = map[string]reviewStopDisposition{
 		// reaching it proves a genuine code defect.
 		ToolFault: reviewStopToolFault(true),
 	},
+	"acknowledged_terminal": {
+		Terminal:      true,
+		Justification: "the approval was acknowledged and its authority burned by design (#4405); the terminal receipt is the record of a completed lifecycle, so no in-lifecycle action exists — new changes to the same paths are a different frozen target and get their own fresh review, which the docs row says verbatim",
+		ToolFault:     reviewStopToolFault(false),
+	},
 	"corrected_candidate_unavailable": {
 		Terminal:      false,
 		Justification: "caller-continuable: change the candidate content so it differs from the frozen original, then re-run `review status --next-transition` — a concrete, flag-driven command, not a maintainer-only action; the docs row does not open with \"Terminal\", so pinning this terminal would contradict it",

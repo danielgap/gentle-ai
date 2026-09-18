@@ -2,9 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/gentleman-programming/gentle-ai/v3/internal/model"
 	"github.com/gentleman-programming/gentle-ai/v3/internal/reviewtransaction"
 )
 
@@ -504,4 +507,86 @@ func TestNegotiatedStatusAmbiguousCommittedRangeFallsBackToCollect(t *testing.T)
 			validatePublishedReviewSchema(t, compileWholeNativeStatusSchema(t, "status-v7.schema.json"), output.Bytes())
 		})
 	}
+}
+
+// committedRangeDocsReviewRepo mirrors committedRangeReviewRepo with a
+// docs-only committed candidate, so the negotiated START selects zero lenses
+// and closes approved in the same call (#3900).
+func committedRangeDocsReviewRepo(t *testing.T) string {
+	t.Helper()
+	repo := initReviewCLIRepo(t)
+	origin := t.TempDir()
+	runReviewCLIGit(t, origin, "init", "--bare", "-q")
+	runReviewCLIGit(t, repo, "remote", "add", "origin", origin)
+	runReviewCLIGit(t, repo, "push", "-q", "origin", "HEAD:refs/heads/main")
+	runReviewCLIGit(t, repo, "fetch", "-q", "origin")
+	runReviewCLIGit(t, repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	lines := make([]string, 8)
+	for index := range lines {
+		lines[index] = fmt.Sprintf("committed documentation line %02d", index+1)
+	}
+	writeReviewStartCandidate(t, repo, "docs/committed-guide.md", strings.Join(lines, "\n")+"\n", 0o644)
+	runReviewCLIGit(t, repo, "add", "docs/committed-guide.md")
+	runReviewCLIGit(t, repo, "commit", "-qm", "committed documentation candidate")
+	return repo
+}
+
+// TestNegotiatedStatusDerivedCommittedRangeResolvesAcknowledgedTerminalReceipt
+// is the #4405 regression for the derived committed-range route: after a
+// committed-range review is approved and acknowledged, the selectorless STATUS
+// on the clean worktree derives the same committed range and must report the
+// acknowledged terminal state, never a fresh START for an acknowledged target.
+func TestNegotiatedStatusDerivedCommittedRangeResolvesAcknowledgedTerminalReceipt(t *testing.T) {
+	reviewEnabledHome(t)
+	repo := committedRangeDocsReviewRepo(t)
+	base := strings.TrimSpace(runReviewCLIGit(t, repo, "merge-base", "HEAD", "refs/remotes/origin/main"))
+
+	var offered bytes.Buffer
+	if err := RunReview([]string{"status", "--cwd", repo, "--contract", ReviewIntegrationContractV2, "--agent", "claude-code", "--next-transition", "--base-ref", base, "--committed-only"}, &offered); err != nil {
+		t.Fatalf("committed-range STATUS: %v\n%s", err, offered.String())
+	}
+	var offeredStatus ReviewTargetStatusResult
+	decodeStrictReviewJSON(t, offered.Bytes(), &offeredStatus)
+	if offeredStatus.NextTransition == nil || offeredStatus.NextTransition.Kind != reviewNextTransitionExecute ||
+		offeredStatus.NextTransition.Execute == nil || offeredStatus.NextTransition.Execute.Operation != "review.start" {
+		t.Fatalf("committed-range STATUS transition = %#v, want an executable START", offeredStatus.NextTransition)
+	}
+	started := runNegotiatedReviewStartWith(t, repo, startTransitionArgumentValue(t, offeredStatus, "lineage"), "--agent", string(model.AgentClaudeCode), "--base-ref", base)
+	if started.State != reviewtransaction.StateApproved {
+		t.Fatalf("committed-range START state = %q, want approved (zero-lens terminal)", started.State)
+	}
+	store, err := reviewtransaction.CompactAuthoritativeStore(context.Background(), repo, started.LineageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending, present := reviewtransaction.PendingApprovedCompactAcknowledgement(record)
+	if !present {
+		t.Fatalf("committed-range START issued no pending acknowledgement: %#v", record.State)
+	}
+	if err := reviewtransaction.AcknowledgeApprovedCompactAuthority(context.Background(), repo, pending.LineageID, pending.TargetIdentity, pending.ExpectedRevision, pending.Token); err != nil {
+		t.Fatal(err)
+	}
+
+	var after bytes.Buffer
+	if err := RunReview([]string{"status", "--cwd", repo, "--contract", ReviewIntegrationContractV2, "--agent", "claude-code", "--next-transition"}, &after); err != nil {
+		t.Fatalf("selectorless STATUS after the acknowledged burn: %v\n%s", err, after.String())
+	}
+	var status ReviewTargetStatusResult
+	decodeStrictReviewJSON(t, after.Bytes(), &status)
+	if status.Applicability != reviewtransaction.TargetApplicabilityAcknowledged ||
+		status.TerminalReceipt == nil || status.TerminalReceipt.LineageID != started.LineageID {
+		t.Fatalf("derived committed-range STATUS after the burn = applicability=%q receipt=%#v, want the acknowledged terminal receipt", status.Applicability, status.TerminalReceipt)
+	}
+	if status.NextTransition == nil || status.NextTransition.Kind != reviewNextTransitionStop ||
+		status.NextTransition.ReasonCode != "acknowledged_terminal" {
+		t.Fatalf("derived committed-range transition after the burn = %#v, want stop/acknowledged_terminal", status.NextTransition)
+	}
+	// The acknowledged envelope is a published-contract payload: it must
+	// validate against the shipped status-v7 schema, terminal_receipt and
+	// action "none" included.
+	validatePublishedReviewSchema(t, compileWholeNativeStatusSchema(t, "status-v7.schema.json"), after.Bytes())
 }

@@ -78,7 +78,7 @@ Native Go owns frozen lenses, provider context and admission, refutation, one bo
 
 The acknowledgement transition is an execution detail of `gentle-ai.review-integration/v2`; it does not authorize delivery. Escalated and other non-approved terminal paths retain their existing response and STATUS behavior and do not gain an acknowledgement transition. After a malformed, incomplete, or unavailable capture, retain the exact lineage, revision, and target binding, query bound STATUS once, and follow only the reoffered capture route.
 
-After a successful burn, no terminal receipt, tombstone, witness, mirror, or delivery authority survives. Other lineages and worktrees are unaffected.
+After a successful burn, the active authority is gone but one immutable, hashes-only terminal review receipt survives (#4405): lineage, frozen target identity, consumed revision, projection, structural snapshot, and burn timestamp, stored under the shared review-transactions root. It never carries review content, source bytes, or the acknowledgement token, and it grants nothing by itself. A later STATUS for the same unchanged frozen target resolves that receipt and answers `applicability: acknowledged` with `action: none` and a `stop/acknowledged_terminal` transition instead of reoffering a fresh START; a changed candidate still gets its own fresh `review.start`. Other lineages and worktrees are unaffected.
 
 ## Reviewer transport
 
@@ -142,6 +142,7 @@ A `stop` carries one reason code and no executable transition. The table below i
 | --- | --- |
 | `captured_artifacts_unverifiable` | Terminal — a captured reviewer artifact failed local verification. Ask a maintainer to inspect the B authority, or run `gentle-ai review mode disable --scope clone --cwd <repo>`. |
 | `captured_result_selection_unavailable` | Terminal — an internal result-selection invariant failed. Ask a maintainer to inspect the lineage, or run `gentle-ai review mode disable --scope clone --cwd <repo>`. |
+| `acknowledged_terminal` | Terminal — this exact frozen candidate was already reviewed, approved, and acknowledged (#4405); the review lifecycle is complete. Deliver the change under ordinary repository policy — a review outcome is informational and never authorizes delivery. A changed candidate gets its own fresh `review.start`. |
 | `corrected_candidate_unavailable` | Change the correction candidate in B, then re-query `gentle-ai review status --cwd <repo> --contract gentle-ai.review-integration/v2 --agent {{GENTLE_AI_RUNTIME_AGENT_ID}} --next-transition` with the captured lineage and target. Do not reuse the pre-correction target. |
 | `empty_base_diff_bootstrap_required` | Terminal — the committed base has no reviewable paths. Use the separately authorized empty-root bootstrap for a new target, or run `gentle-ai review mode disable --scope clone --cwd <repo>`. |
 | `lens_context_budget_exceeded` | Terminal — immutable reviewer context cannot be truncated. Reduce the B candidate scope and start a new transaction, or run `gentle-ai review mode disable --scope clone --cwd <repo>`. |
