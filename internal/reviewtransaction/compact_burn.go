@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ReviewAuthorityBurnStateError reports an exact authority whose state cannot be
@@ -143,7 +144,9 @@ var ErrApprovedAcknowledgementAuthorityAbsent = errors.New("approved acknowledge
 // AcknowledgeApprovedCompactAuthority verifies one exact pending acknowledgement
 // and burns the authority while the existing maintenance and version locks remain
 // held. It never writes an acknowledged state, so a failure leaves the pending
-// authority replayable and a success leaves no active authority behind.
+// authority replayable and a success leaves no active authority behind; the
+// immutable terminal review receipt published first (#4405) is the durable
+// trace of what was acknowledged.
 func AcknowledgeApprovedCompactAuthority(ctx context.Context, repo, lineageID, targetIdentity, expectedRevision, token string) error {
 	if err := validateLineageID(lineageID); err != nil {
 		return err
@@ -201,6 +204,14 @@ func AcknowledgeApprovedCompactAuthority(ctx context.Context, repo, lineageID, t
 	}
 	if subtle.ConstantTimeCompare([]byte(record.State.ApprovedAckToken), []byte(token)) != 1 {
 		return errors.New("approved acknowledgement token does not match active compact authority") // refusal:by-design operator-knowledge: use the exact opaque token returned by the pending acknowledgement
+	}
+	// #4405: publish the immutable terminal receipt before any deletion. A
+	// publication failure aborts the burn with the approved authority still
+	// inspectable, mirroring the effect-marker ordering below: the authority
+	// directory is the final direct deletion and the receipt may never point
+	// at a burn that did not happen.
+	if err := publishCompactTerminalReviewReceipt(base, record, time.Now()); err != nil {
+		return fmt.Errorf("publish terminal review receipt: %w", err)
 	}
 	return burnApprovedCompactAuthorityLocked(base, lineageID, store)
 }
