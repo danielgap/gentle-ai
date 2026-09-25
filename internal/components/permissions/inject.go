@@ -32,7 +32,11 @@ func TargetPath(homeDir string, adapter agents.Adapter) string {
 // Claude Code prefix rules only match the literal start of the command string, so
 // an agent can otherwise sidestep Bash(ssh:*) by invoking the interpreter-free
 // utilities through an absolute path (/usr/bin/ssh ...), a backslash escape
-// (\ssh ...), or a shell resolution wrapper (command ssh ..., exec ssh ...).
+// (\ssh ...), a shell resolution wrapper (command ssh ..., exec ssh ...), or
+// an environment/reset wrapper (env -i ssh ..., env FOO=1 ssh ...). The
+// Bash(env * tool:*) glob entries cover env with variable assignments and
+// absolute paths because the middle wildcard matches any prefix segment;
+// Bash(exec -a * tool:*) covers exec with an alias argument the same way.
 // The enumerated directories are the canonical install prefixes of the OpenSSH
 // client and rsync across the supported platforms (FHS Linux /bin and /usr/bin,
 // custom /usr/local/bin, Apple Silicon /opt/homebrew/bin, NixOS
@@ -105,7 +109,19 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(/run/current-system/sw/bin/rsync:*)",
       "Bash(\\rsync:*)",
       "Bash(command rsync:*)",
-      "Bash(exec rsync:*)"
+      "Bash(exec rsync:*)",
+      "Bash(env -i ssh:*)",
+      "Bash(env * ssh:*)",
+      "Bash(exec -a * ssh:*)",
+      "Bash(env -i scp:*)",
+      "Bash(env * scp:*)",
+      "Bash(exec -a * scp:*)",
+      "Bash(env -i sftp:*)",
+      "Bash(env * sftp:*)",
+      "Bash(exec -a * sftp:*)",
+      "Bash(env -i rsync:*)",
+      "Bash(env * rsync:*)",
+      "Bash(exec -a * rsync:*)"
     ]
   }
 }
@@ -171,7 +187,19 @@ var openCodeOverlayJSON = []byte(`{
       "/run/current-system/sw/bin/rsync *": "deny",
       "/rsync *": "deny",
       "command rsync *": "deny",
-      "exec rsync *": "deny"
+      "exec rsync *": "deny",
+      "env -i ssh *": "deny",
+      "env * ssh *": "deny",
+      "exec -a * ssh *": "deny",
+      "env -i scp *": "deny",
+      "env * scp *": "deny",
+      "exec -a * scp *": "deny",
+      "env -i sftp *": "deny",
+      "env * sftp *": "deny",
+      "exec -a * sftp *": "deny",
+      "env -i rsync *": "deny",
+      "env * rsync *": "deny",
+      "exec -a * rsync *": "deny"
     },
     "read": {
       "*": "allow",

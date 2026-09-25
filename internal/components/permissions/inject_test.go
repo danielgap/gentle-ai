@@ -719,6 +719,24 @@ func remoteShellEscapeForms(tool, openCodeSuffix, claudeCodeSuffix string) (open
 	return openCode, claudeCode
 }
 
+// remoteShellWrapperForms returns the env/exec -a wrapper deny surfaces for one
+// tool: the stripped-environment reset (env -i), the variable-assignment glob
+// (env * — which also catches absolute paths because the wildcard matches any
+// prefix segment), and the alias wrapper (exec -a *).
+func remoteShellWrapperForms(tool, openCodeSuffix, claudeCodeSuffix string) (openCode []string, claudeCode []string) {
+	openCode = append(openCode,
+		"env -i "+tool+openCodeSuffix,
+		"env * "+tool+openCodeSuffix,
+		"exec -a * "+tool+openCodeSuffix,
+	)
+	claudeCode = append(claudeCode,
+		"Bash(env -i "+tool+claudeCodeSuffix+")",
+		"Bash(env * "+tool+claudeCodeSuffix+")",
+		"Bash(exec -a * "+tool+claudeCodeSuffix+")",
+	)
+	return openCode, claudeCode
+}
+
 // TestInjectOpenCodeDeniesRemoteShellUtilities verifies that the remote shell
 // utilities used to reach machines outside the workspace (ssh, scp, sftp,
 // rsync) are denied in the OpenCode/Kilocode bash permission map in their
@@ -739,6 +757,8 @@ func TestInjectOpenCodeDeniesRemoteShellUtilities(t *testing.T) {
 	for _, tool := range remoteShellTools {
 		openCode, _ := remoteShellEscapeForms(tool, " *", ":*")
 		remoteDenyRules = append(remoteDenyRules, openCode...)
+		wrapperOpenCode, _ := remoteShellWrapperForms(tool, " *", ":*")
+		remoteDenyRules = append(remoteDenyRules, wrapperOpenCode...)
 	}
 
 	tests := []struct {
@@ -816,6 +836,8 @@ func TestInjectClaudeCodeDeniesRemoteShellUtilities(t *testing.T) {
 	for _, tool := range remoteShellTools {
 		_, claudeCode := remoteShellEscapeForms(tool, " *", ":*")
 		remoteDenyRules = append(remoteDenyRules, claudeCode...)
+		_, wrapperClaude := remoteShellWrapperForms(tool, " *", ":*")
+		remoteDenyRules = append(remoteDenyRules, wrapperClaude...)
 	}
 
 	home := t.TempDir()
@@ -877,6 +899,71 @@ func TestInjectClaudeCodeDeniesRemoteShellUtilities(t *testing.T) {
 	mode, _ := perms["defaultMode"].(string)
 	if mode != "bypassPermissions" {
 		t.Errorf("expected defaultMode=bypassPermissions after overlay, got %q", mode)
+	}
+}
+
+// TestInjectClaudeCodeRemoteShellDenyIdempotent verifies that calling Inject
+// twice with the Claude adapter does not duplicate any remote-shell deny rule
+// and reports Changed == false on the second pass (#4324).
+func TestInjectClaudeCodeRemoteShellDenyIdempotent(t *testing.T) {
+	home := t.TempDir()
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	first, err := Inject(home, claudeAdapter())
+	if err != nil {
+		t.Fatalf("first Inject() error = %v", err)
+	}
+	if !first.Changed {
+		t.Fatalf("first Inject() should report Changed = true")
+	}
+
+	second, err := Inject(home, claudeAdapter())
+	if err != nil {
+		t.Fatalf("second Inject() error = %v", err)
+	}
+	if second.Changed {
+		t.Errorf("second Inject() should report Changed = false, got true")
+	}
+
+	content, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings file: %v", err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(content, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	perms, ok := settings["permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("permissions node missing")
+	}
+	denyList, ok := perms["deny"].([]any)
+	if !ok {
+		t.Fatalf("deny list missing")
+	}
+
+	// Count every remote-shell deny rule and assert each appears exactly once.
+	seen := make(map[string]int)
+	for _, entry := range denyList {
+		if v, ok := entry.(string); ok {
+			for _, tool := range remoteShellTools {
+				if strings.Contains(v, tool) {
+					seen[v]++
+					break
+				}
+			}
+		}
+	}
+	if len(seen) == 0 {
+		t.Fatalf("no remote-shell deny rules found in deny list")
+	}
+	for rule, count := range seen {
+		if count > 1 {
+			t.Errorf("remote shell deny rule %q appears %d times, want 1", rule, count)
+		}
 	}
 }
 
