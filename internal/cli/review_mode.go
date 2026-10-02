@@ -29,12 +29,14 @@ const (
 )
 
 // ReviewModeResult reports what the command did and the resulting effective
-// mode with both of its sources. It carries no review outcome.
+// mode with both of its sources, plus the #1842 enforcement projection. It
+// carries no review outcome.
 type ReviewModeResult struct {
-	Schema    string                          `json:"schema"`
-	Operation string                          `json:"operation"`
-	Scope     string                          `json:"scope"`
-	Status    reviewtransaction.RDDModeStatus `json:"status"`
+	Schema      string                                 `json:"schema"`
+	Operation   string                                 `json:"operation"`
+	Scope       string                                 `json:"scope"`
+	Status      reviewtransaction.RDDModeStatus        `json:"status"`
+	Enforcement reviewtransaction.RDDEnforcementStatus `json:"enforcement"`
 }
 
 // RunReviewMode is the user-controlled receipt-driven-development switch.
@@ -94,6 +96,11 @@ func RunReviewMode(args []string, stdout io.Writer) error {
 	} else {
 		result.Status, err = applyReviewMode(ctx, *cwd, operation, selectedScope, *expectedRevision, revisionProvided)
 	}
+	// The enforcement projection follows whatever mode the operation reached —
+	// including a failed-closed one on an error path — because it reports the
+	// posture the switch now stands in, and a broken resolution is the off
+	// posture, not a missing one.
+	result.Enforcement = reviewtransaction.ResolveRDDEnforcement(result.Status)
 	if emitErr := emitReviewMode(stdout, result, *emitJSON); emitErr != nil && err == nil {
 		return emitErr
 	}
@@ -491,11 +498,14 @@ func emitReviewMode(stdout io.Writer, result ReviewModeResult, emitJSON bool) er
 	}
 	_, err := fmt.Fprintf(
 		stdout,
-		"receipt-driven development: %s (decided by %s)\n  global:      %s\n  clone-local: %s\n",
+		"receipt-driven development: %s (decided by %s)\n  global:      %s\n  clone-local: %s\n  enforcement: %s (controller %s, delivery gate %s)\n",
 		reviewModeLabel(result.Status.Effective),
 		result.Status.Source,
 		reviewModeLabel(result.Status.Global),
 		reviewModeLabel(result.Status.CloneLocal),
+		result.Enforcement.Enforcement,
+		result.Enforcement.Controller,
+		result.Enforcement.DeliveryGate,
 	)
 	if err != nil {
 		return err
