@@ -25,9 +25,10 @@ import "encoding/json"
 // The remote shell utilities are the carve-out (#4324): their canonical
 // install prefixes, root-level path (which also reaches backslash escapes,
 // because the matcher normalizes backslashes to forward slashes), command
-// and exec resolution wrappers, and direct env execution (env tool ...) are
-// enumerated explicitly, mirroring the Claude Code deny list. A human who
-// wants a utility back re-enables it in their own config.
+// and exec resolution wrappers, direct env execution (env tool ...), and env
+// reset/alias wrappers (env -i, env VAR=..., exec -a name) are enumerated
+// explicitly, mirroring the Claude Code deny list. A human who wants a
+// utility back re-enables it in their own config.
 var openCodeOverlayJSON = buildOpenCodeOverlayJSON()
 
 var (
@@ -157,6 +158,9 @@ func buildOpenCodeOverlayJSON() []byte {
 		deny("command " + command + " *")
 		deny("exec " + command + " *")
 		deny("env " + command + " *")
+		deny("env -i " + command + " *")
+		deny("env * " + command + " *")
+		deny("exec -a * " + command + " *")
 	}
 	for _, client := range openCodeDatabaseClients {
 		for _, statement := range openCodeDestructiveSQL {

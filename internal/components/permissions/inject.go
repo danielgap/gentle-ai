@@ -33,7 +33,12 @@ func TargetPath(homeDir string, adapter agents.Adapter) string {
 // an agent can otherwise sidestep Bash(ssh:*) by invoking the interpreter-free
 // utilities through an absolute path (/usr/bin/ssh ...), a backslash escape
 // (\ssh ...), a shell resolution wrapper (command ssh ..., exec ssh ...), or
-// direct env execution (env ssh ...).
+// a shell resolution wrapper (command ssh ..., exec ssh ...), direct env
+// execution (env ssh ...), or an environment/reset wrapper (env -i ssh ...,
+// env FOO=1 ssh ...). The Bash(env * tool:*) glob entries cover env with
+// variable assignments and absolute paths because the middle wildcard matches
+// any prefix segment; Bash(exec -a * tool:*) covers exec with an alias argument
+// the same way.
 // The enumerated directories are the canonical install prefixes of the OpenSSH
 // client and rsync across the supported platforms (FHS Linux /bin and /usr/bin,
 // custom /usr/local/bin, Apple Silicon /opt/homebrew/bin, NixOS
@@ -78,6 +83,9 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(command ssh:*)",
       "Bash(exec ssh:*)",
       "Bash(env ssh:*)",
+      "Bash(env -i ssh:*)",
+      "Bash(env * ssh:*)",
+      "Bash(exec -a * ssh:*)",
       "Bash(scp)",
       "Bash(scp:*)",
       "Bash(/bin/scp:*)",
@@ -89,6 +97,9 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(command scp:*)",
       "Bash(exec scp:*)",
       "Bash(env scp:*)",
+      "Bash(env -i scp:*)",
+      "Bash(env * scp:*)",
+      "Bash(exec -a * scp:*)",
       "Bash(sftp)",
       "Bash(sftp:*)",
       "Bash(/bin/sftp:*)",
@@ -100,6 +111,9 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(command sftp:*)",
       "Bash(exec sftp:*)",
       "Bash(env sftp:*)",
+      "Bash(env -i sftp:*)",
+      "Bash(env * sftp:*)",
+      "Bash(exec -a * sftp:*)",
       "Bash(rsync)",
       "Bash(rsync:*)",
       "Bash(/bin/rsync:*)",
@@ -110,7 +124,10 @@ var claudeCodeOverlayJSON = []byte(`{
       "Bash(\\rsync:*)",
       "Bash(command rsync:*)",
       "Bash(exec rsync:*)",
-      "Bash(env rsync:*)"
+      "Bash(env rsync:*)",
+      "Bash(env -i rsync:*)",
+      "Bash(env * rsync:*)",
+      "Bash(exec -a * rsync:*)"
     ]
   }
 }
