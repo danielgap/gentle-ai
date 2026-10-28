@@ -4,13 +4,58 @@ package main
 //
 // A results file must not carry machine-specific paths: two runs of the same
 // journey against the same binary, in different sandboxes, must record the
-// same strings. These tests pin the closed token vocabulary and its
-// longest-path-first, whole-path replacement.
+// same strings. These tests pin the closed token vocabulary, its
+// longest-path-first replacement order, and the journey records the runner
+// produces.
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
+
+// normalizerTestJourney drives a stub binary with an argv that carries the
+// sandbox repository path, so the recorded command has a path to project.
+func normalizerTestJourney() Journey {
+	return Journey{
+		ID: "known",
+		// This journey drives a stub binary through the command boundary,
+		// not the review lifecycle, so the runner must leave the kill
+		// switch alone.
+		Review: reviewUntouched,
+		Steps: []Step{{
+			Name: "invoke test binary",
+			Fixture: func(sandbox *Sandbox) error {
+				return os.MkdirAll(sandbox.Repo, 0o755)
+			},
+			Args: func(sandbox *Sandbox) ([]string, error) {
+				return []string{"review", "--cwd", sandbox.Repo}, nil
+			},
+		}},
+	}
+}
+
+// copyTestBinary copies binary to a different directory, so a second run
+// drives the same bytes from a different path.
+func copyTestBinary(t *testing.T, binary string) string {
+	t.Helper()
+	copied := filepath.Join(t.TempDir(), "elsewhere", filepath.Base(binary))
+	if err := os.MkdirAll(filepath.Dir(copied), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(copied, raw, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return copied
+}
 
 func TestPathNormalizerAppliesLongestSpecificTokensFirst(t *testing.T) {
 	normalizer := newPathNormalizer("/opt/binaries/gentle-ai", "/tmp/prov-root")
@@ -93,5 +138,92 @@ func TestPathNormalizerProjectsTargetBinaryUnderHome(t *testing.T) {
 		if got := normalizer.Normalize(tt.in); got != tt.want {
 			t.Errorf("Normalize(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+// TestRunJourneyRecordsTokensInsteadOfMachinePaths pins the runner: a
+// recorded command whose argv carries the sandbox repository path records the
+// repository token, and no recorded string carries the sandbox root or the
+// target binary path.
+func TestRunJourneyRecordsTokensInsteadOfMachinePaths(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a temporary executable to exercise the journey runner")
+	}
+
+	binary, _ := benchmarkTestBinary(t)
+	result := runJourney(binary, normalizerTestJourney())
+	if len(result.Commands) != 1 {
+		t.Fatalf("expected one recorded command, got %#v", result)
+	}
+	if want := []string{"review", "--cwd", RepositoryToken}; !reflect.DeepEqual(result.Commands[0].Args, want) {
+		t.Errorf("recorded args = %#v, want %#v", result.Commands[0].Args, want)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), binary) {
+		t.Errorf("journey result still carries the target binary path:\n%s", encoded)
+	}
+	if strings.Contains(string(encoded), filepath.Join(os.TempDir(), "gentle-ai-bench-")) {
+		t.Errorf("journey result still carries a sandbox path:\n%s", encoded)
+	}
+}
+
+// TestRunJourneyProjectsFailureReasons pins the failure branches: a fixture
+// error that names a sandbox path is recorded with the canonical token, so
+// dropping Normalize from a failure branch cannot pass unnoticed.
+func TestRunJourneyProjectsFailureReasons(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a temporary executable to exercise the journey runner")
+	}
+
+	binary, _ := benchmarkTestBinary(t)
+	journey := Journey{
+		ID: "failing-fixture",
+		Steps: []Step{{
+			Name: "broken",
+			Fixture: func(sandbox *Sandbox) error {
+				return fmt.Errorf("chdir %s: no such file or directory", filepath.Join(sandbox.Repo, "missing"))
+			},
+		}},
+	}
+	result := runJourney(binary, journey)
+	if result.Status != StatusFailed {
+		t.Fatalf("status = %q, want %q", result.Status, StatusFailed)
+	}
+	want := `fixture "broken": chdir ` + RepositoryToken + `/missing: no such file or directory`
+	if result.FailureReason != want {
+		t.Fatalf("failure reason = %q, want %q", result.FailureReason, want)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), filepath.Join(os.TempDir(), "gentle-ai-bench-")) {
+		t.Errorf("failed journey result still carries a sandbox path:\n%s", encoded)
+	}
+}
+
+// TestRunJourneyRecordsIdenticalResultsAcrossSandboxes is the property the
+// projection exists for: the same journey driven against two copies of the
+// same binary at different paths, each in its own temp sandbox, records the
+// same result.
+func TestRunJourneyRecordsIdenticalResultsAcrossSandboxes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds a temporary executable to exercise the journey runner")
+	}
+
+	binary, _ := benchmarkTestBinary(t)
+	first, err := json.Marshal(runJourney(binary, normalizerTestJourney()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := json.Marshal(runJourney(copyTestBinary(t, binary), normalizerTestJourney()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(first) != string(second) {
+		t.Fatalf("journey results differ across sandboxes; the projection is not path-free:\n--- first\n%s\n--- second\n%s", first, second)
 	}
 }

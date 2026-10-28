@@ -245,6 +245,32 @@ in `excluded_journeys`, never silently dropped, and the per-journey breakdown
 still shows every journey with `unsup -> n` where the older binary could not
 run it.
 
+## Journey records are path-free
+
+A results file must not leak the machine it was produced on. Every string a
+journey records that can carry a path (command argv and steps, block
+messages, failure reasons, unsupported steps) is projected onto a closed token
+vocabulary at record time:
+
+| Token | Stands for |
+|---|---|
+| `<RUN_ROOT>` | the journey's temp sandbox root |
+| `<REPOSITORY>` | the sandbox's throwaway git checkout |
+| `<HOME>` | the sandbox's throwaway HOME |
+| `<TARGET_BINARY>` | the resolved path of the binary under test |
+
+Replacement is longest-path-first, so the most specific known path always
+wins: the repository before the home that contains it, the home before the
+run root, and the target binary's exact path before a home it was built under
+(CI builds it in `$RUNNER_TEMP`, inside the runner's home). The same journey
+driven against the same binary in two different sandboxes therefore records
+the same result. A known path is replaced only when it is a whole path:
+nothing of a longer path may precede it, and it must end at a separator,
+whitespace, punctuation, or end of text. For example, with the root
+`/tmp/run`, `/tmp/run/child` becomes `<RUN_ROOT>/child` and
+`chdir /tmp/run: ...` becomes `chdir <RUN_ROOT>: ...`, but `/tmp/run2`,
+`/tmp/runner`, `/tmp/run.log`, and `/var/tmp/run` stay unchanged.
+
 ## What this deliberately does NOT measure
 
 - **Wall-clock time.** Excluded by design. Review duration is dominated by the
@@ -802,6 +828,7 @@ coverage would not be.
 main.go        run / record / analyze / compare / __shim dispatch
 classify.go    Observation, IsBlock, IsUnsupported, Classify   <- the contract
 metrics.go     Dimension, BlockCounts, accumulator, aggregate
+normalize.go   the path-free projection: token vocabulary, PathNormalizer
 runner.go      Sandbox, capability probe, journey engine
 journeys.go    the corpus, as data — guide flows and their failure paths
 journeys_edge.go  the edge-case part of the corpus, with self-proving fixtures

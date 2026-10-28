@@ -28,9 +28,9 @@ const (
 )
 
 // PathNormalizer projects machine-specific paths onto the closed token
-// vocabulary at record time. It belongs where records are folded
+// vocabulary at record time. It is wired where records are folded
 // (accumulator.observe), so every recorded string is path-free by
-// construction; the journey runner wires it there in the next slice of #1866.
+// construction.
 //
 // Replacement order is longest-path-first, so the most specific known path
 // always wins over a path that contains it: the repository before the home
