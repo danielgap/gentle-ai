@@ -539,6 +539,169 @@ func TestInjectOpenCodeDeniesRemoteShellUtilities(t *testing.T) {
 	}
 }
 
+// claudeCodeRemoteShellEscapeForms returns every Claude Code deny surface one
+// tool needs beyond the bare name: one entry per absolute install prefix, the
+// backslash escape, the shell resolution wrappers, and the single- and
+// double-quoted command names. Claude Code prefix rules only match the
+// literal start of the command, so each spelling needs its own entry.
+func claudeCodeRemoteShellEscapeForms(tool, suffix string) []string {
+	var forms []string
+	for _, prefix := range remoteShellPathPrefixes {
+		forms = append(forms, "Bash("+prefix+tool+suffix+")")
+	}
+	forms = append(forms, "Bash(\\"+tool+suffix+")", "Bash(command "+tool+suffix+")", "Bash(exec "+tool+suffix+")")
+	for _, quote := range []string{"'", `"`} {
+		forms = append(forms, "Bash("+quote+tool+quote+suffix+")")
+	}
+	return forms
+}
+
+// TestInjectClaudeCodeDeniesRemoteShellUtilities verifies that the remote shell
+// utilities used to reach machines outside the workspace (ssh, scp, sftp,
+// rsync) are denied in the Claude Code deny list in their exact and wildcard
+// command forms, plus the absolute-path and shell resolution prefix forms
+// that bypass a bare-command prefix rule (#4324).
+func TestInjectClaudeCodeDeniesRemoteShellUtilities(t *testing.T) {
+	remoteDenyRules := []string{
+		"Bash(ssh)",
+		"Bash(ssh:*)",
+		"Bash(scp)",
+		"Bash(scp:*)",
+		"Bash(sftp)",
+		"Bash(sftp:*)",
+		"Bash(rsync)",
+		"Bash(rsync:*)",
+	}
+	for _, tool := range remoteShellTools {
+		remoteDenyRules = append(remoteDenyRules, claudeCodeRemoteShellEscapeForms(tool, ":*")...)
+		remoteDenyRules = append(remoteDenyRules, "Bash(env "+tool+":*)")
+	}
+
+	home := t.TempDir()
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	// Pre-existing settings with a sibling key under permissions (not deny),
+	// mirroring the default-deny test: the remote denials must land even when
+	// a permissions block is already present. Real newlines, so the merge
+	// actually parses the existing block.
+	existing := `{
+  "permissions": {
+    "defaultMode": "default"
+  }
+}`
+	if err := os.WriteFile(settingsPath, []byte(existing), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, err := Inject(home, claudeAdapter()); err != nil {
+		t.Fatalf("Inject() error = %v", err)
+	}
+
+	content, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings file: %v", err)
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(content, &settings); err != nil {
+		t.Fatalf("unmarshal settings json: %v", err)
+	}
+	perms, ok := settings["permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("permissions node missing or invalid: %#v", settings["permissions"])
+	}
+	denyList, ok := perms["deny"].([]any)
+	if !ok {
+		t.Fatalf("deny list missing or invalid: %#v", perms["deny"])
+	}
+	denySet := make(map[string]bool)
+	for _, entry := range denyList {
+		if v, ok := entry.(string); ok {
+			denySet[v] = true
+		}
+	}
+
+	for _, rule := range remoteDenyRules {
+		if !denySet[rule] {
+			t.Errorf("remote shell deny rule %q was not present; got: %v", rule, denyList)
+		}
+	}
+
+	// The overlay wins for defaultMode because arrays replace but maps deep-merge.
+	mode, _ := perms["defaultMode"].(string)
+	if mode != "bypassPermissions" {
+		t.Errorf("expected defaultMode=bypassPermissions after overlay, got %q", mode)
+	}
+}
+
+// TestInjectClaudeCodeRemoteShellDenyIdempotent verifies that calling Inject
+// twice with the Claude adapter does not duplicate any remote-shell deny rule
+// and reports Changed == false on the second pass (#4324).
+func TestInjectClaudeCodeRemoteShellDenyIdempotent(t *testing.T) {
+	home := t.TempDir()
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	first, err := Inject(home, claudeAdapter())
+	if err != nil {
+		t.Fatalf("first Inject() error = %v", err)
+	}
+	if !first.Changed {
+		t.Fatalf("first Inject() should report Changed = true")
+	}
+
+	second, err := Inject(home, claudeAdapter())
+	if err != nil {
+		t.Fatalf("second Inject() error = %v", err)
+	}
+	if second.Changed {
+		t.Errorf("second Inject() should report Changed = false, got true")
+	}
+
+	content, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings file: %v", err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(content, &settings); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	perms, ok := settings["permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("permissions node missing")
+	}
+	denyList, ok := perms["deny"].([]any)
+	if !ok {
+		t.Fatalf("deny list missing")
+	}
+
+	// Count every remote-shell deny rule and assert each appears exactly once.
+	seen := make(map[string]int)
+	for _, entry := range denyList {
+		if v, ok := entry.(string); ok {
+			for _, tool := range remoteShellTools {
+				if strings.Contains(v, tool) {
+					seen[v]++
+					break
+				}
+			}
+		}
+	}
+	if len(seen) == 0 {
+		t.Fatalf("no remote-shell deny rules found in deny list")
+	}
+	for rule, count := range seen {
+		if count > 1 {
+			t.Errorf("remote shell deny rule %q appears %d times, want 1", rule, count)
+		}
+	}
+}
+
 func claudeAdapter() agents.Adapter      { return claude.NewAdapter() }
 func opencodeAdapter() agents.Adapter    { return opencode.NewAdapter() }
 func geminiAdapter() agents.Adapter      { return gemini.NewAdapter() }
